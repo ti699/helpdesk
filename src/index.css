@@ -1,0 +1,148 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 220 20% 97%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 221 83% 53%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 215 25% 90%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 215 25% 93%;
+    --muted-foreground: 215 16% 40%;
+
+    --accent: 215 25% 90%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 215 25% 85%;
+    --input: 215 25% 85%;
+    --ring: 221 83% 53%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 220 20% 95%;
+    --sidebar-foreground: 222 47% 20%;
+    --sidebar-primary: 221 83% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 215 25% 88%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 215 25% 85%;
+    --sidebar-ring: 221 83% 53%;
+
+    /* Status colors - light mode */
+    --status-open: 35 92% 50%;
+    --status-in-progress: 221 83% 53%;
+    --status-waiting: 38 92% 50%;
+    --status-resolved: 142 76% 36%;
+    --status-closed: 215 16% 47%;
+
+    /* Priority colors - light mode */
+    --priority-low: 142 76% 36%;
+    --priority-medium: 38 92% 50%;
+    --priority-high: 25 95% 53%;
+    --priority-critical: 0 84% 60%;
+  }
+
+  .dark {
+    --background: 222 47% 8%;
+    --foreground: 210 40% 96%;
+
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 96%;
+
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 96%;
+
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 11%;
+
+    --secondary: 217 33% 20%;
+    --secondary-foreground: 210 40% 96%;
+
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 60%;
+
+    --accent: 217 33% 20%;
+    --accent-foreground: 210 40% 96%;
+
+    --destructive: 0 63% 45%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 33% 20%;
+    --input: 217 33% 20%;
+    --ring: 217 91% 60%;
+
+    --sidebar-background: 222 47% 8%;
+    --sidebar-foreground: 210 40% 92%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 222 47% 11%;
+    --sidebar-accent: 217 33% 17%;
+    --sidebar-accent-foreground: 210 40% 96%;
+    --sidebar-border: 217 33% 17%;
+    --sidebar-ring: 217 91% 60%;
+
+    /* Status colors - dark mode */
+    --status-open: 35 92% 55%;
+    --status-in-progress: 217 91% 60%;
+    --status-waiting: 38 92% 55%;
+    --status-resolved: 142 70% 45%;
+    --status-closed: 215 16% 55%;
+
+    /* Priority colors - dark mode */
+    --priority-low: 142 70% 45%;
+    --priority-medium: 38 92% 55%;
+    --priority-high: 25 95% 58%;
+    --priority-critical: 0 75% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* FORÇA BRUTA PARA OS SELECTS */
+.dark [role="combobox"],
+.dark [data-state="open"] {
+  background-color: #020817 !important; /* Fundo Preto (Slate 950) */
+  color: #ffffff !important;            /* Texto Branco */
+  border-color: #1e293b !important;     /* Borda Cinza Escura */
+}
+
+/* Garante que a lista de opções também fique preta */
+.dark [role="listbox"],
+.dark [role="presentation"] {
+  background-color: #020817 !important;
+  color: #ffffff !important;
+}
+
+/* Resolve o texto "invisível" dentro das opções */
+.dark [role="option"] {
+  color: #ffffff !important;
+}
+.dark [role="option"]:hover {
+  background-color: #1e293b !important; /* Cor ao passar o mouse */
+}

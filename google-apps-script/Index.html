@@ -1,0 +1,2243 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/lucide.min.js" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #D32F2F;
+      --primary-hover: #B71C1C;
+      --secondary: #6B6B6B;
+      --background: #F5F5F5;
+      --card: #FFFFFF;
+      --border: #E0E0E0;
+      --text: #212121;
+      --text-muted: #757575;
+      --success: #4CAF50;
+      --warning: #FFC107;
+      --error: #F44336;
+      --info: #2196F3;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--background);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    
+    /* ==================== COMPONENTES BASE ==================== */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 16px;
+    }
+    
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      padding: 24px;
+      margin-bottom: 16px;
+    }
+    
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: 500;
+      font-size: 14px;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+    
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background: var(--primary-hover);
+    }
+    
+    .btn-secondary {
+      background: var(--secondary);
+      color: white;
+    }
+    
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    
+    .btn-outline:hover {
+      background: var(--background);
+    }
+    
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-muted);
+    }
+    
+    .btn-ghost:hover {
+      background: var(--background);
+    }
+    
+    .btn-icon {
+      padding: 8px;
+      width: 40px;
+      height: 40px;
+    }
+    
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.2s;
+    }
+    
+    .input:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+    
+    .input-group {
+      margin-bottom: 16px;
+    }
+    
+    .input-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 500;
+      font-size: 14px;
+    }
+    
+    .select {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      background: white;
+      cursor: pointer;
+    }
+    
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    
+    .badge-success { background: #E8F5E9; color: #2E7D32; }
+    .badge-warning { background: #FFF8E1; color: #F57F17; }
+    .badge-error { background: #FFEBEE; color: #C62828; }
+    .badge-info { background: #E3F2FD; color: #1565C0; }
+    .badge-secondary { background: #F5F5F5; color: #616161; }
+    
+    .avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 16px;
+    }
+    
+    .avatar img {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      object-fit: cover;
+    }
+    
+    /* ==================== HEADER ==================== */
+    .header {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 0;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    
+    .header-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    
+    .header-logo {
+      height: 40px;
+    }
+    
+    .header-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .header-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .header-user {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .header-user-name {
+      font-weight: 500;
+      font-size: 14px;
+    }
+    
+    /* ==================== NAVEGAÇÃO ==================== */
+    .nav-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+    
+    .nav-tab {
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 500;
+      color: var(--text-muted);
+      transition: all 0.2s;
+    }
+    
+    .nav-tab:hover {
+      background: var(--background);
+    }
+    
+    .nav-tab.active {
+      background: var(--primary);
+      color: white;
+    }
+    
+    /* ==================== LOGIN ==================== */
+    .auth-container {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .auth-card {
+      width: 100%;
+      max-width: 400px;
+    }
+    
+    .auth-logo {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    
+    .auth-logo img {
+      height: 60px;
+    }
+    
+    .auth-title {
+      text-align: center;
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    
+    .auth-subtitle {
+      text-align: center;
+      color: var(--text-muted);
+      margin-bottom: 32px;
+    }
+    
+    .auth-tabs {
+      display: flex;
+      margin-bottom: 24px;
+      border-radius: 8px;
+      background: var(--background);
+      padding: 4px;
+    }
+    
+    .auth-tab {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    
+    .auth-tab.active {
+      background: var(--card);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    .auth-link {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    
+    .auth-link:hover {
+      text-decoration: underline;
+    }
+    
+    /* ==================== DASHBOARD ==================== */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    
+    .stat-card {
+      padding: 20px;
+    }
+    
+    .stat-label {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    
+    .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+    }
+    
+    .stat-icon {
+      float: right;
+      opacity: 0.5;
+    }
+    
+    /* ==================== LISTA DE TICKETS ==================== */
+    .ticket-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    
+    .ticket-item {
+      display: flex;
+      align-items: center;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .ticket-item:hover {
+      border-color: var(--primary);
+      box-shadow: 0 2px 8px rgba(211, 47, 47, 0.1);
+    }
+    
+    .ticket-info {
+      flex: 1;
+    }
+    
+    .ticket-protocol {
+      font-weight: 600;
+      color: var(--primary);
+      font-size: 14px;
+    }
+    
+    .ticket-title {
+      font-weight: 500;
+      margin: 4px 0;
+    }
+    
+    .ticket-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    
+    .ticket-badges {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    
+    /* ==================== DETALHE DO TICKET ==================== */
+    .ticket-detail-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    
+    .ticket-detail-title {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    
+    .ticket-detail-protocol {
+      color: var(--primary);
+      font-weight: 500;
+    }
+    
+    .ticket-detail-content {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      gap: 24px;
+    }
+    
+    @media (max-width: 768px) {
+      .ticket-detail-content {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    .ticket-description {
+      background: var(--background);
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 24px;
+      white-space: pre-wrap;
+    }
+    
+    /* ==================== CHAT ==================== */
+    .chat-container {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    
+    .chat-header {
+      background: var(--background);
+      padding: 12px 16px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+    }
+    
+    .chat-messages {
+      height: 400px;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    
+    .chat-message {
+      max-width: 80%;
+      padding: 12px 16px;
+      border-radius: 12px;
+    }
+    
+    .chat-message.sent {
+      align-self: flex-end;
+      background: var(--primary);
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+    
+    .chat-message.received {
+      align-self: flex-start;
+      background: var(--background);
+      border-bottom-left-radius: 4px;
+    }
+    
+    .chat-message.system {
+      align-self: center;
+      background: #FFF8E1;
+      color: #F57F17;
+      font-size: 12px;
+      padding: 8px 16px;
+    }
+    
+    .chat-message-author {
+      font-weight: 600;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    
+    .chat-message-time {
+      font-size: 10px;
+      opacity: 0.7;
+      margin-top: 4px;
+    }
+    
+    .chat-input {
+      display: flex;
+      gap: 8px;
+      padding: 12px;
+      border-top: 1px solid var(--border);
+      background: var(--card);
+    }
+    
+    .chat-input input {
+      flex: 1;
+    }
+    
+    /* ==================== SIDEBAR INFO ==================== */
+    .sidebar-section {
+      margin-bottom: 24px;
+    }
+    
+    .sidebar-section-title {
+      font-weight: 600;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+    
+    .info-label {
+      color: var(--text-muted);
+    }
+    
+    .info-value {
+      font-weight: 500;
+    }
+    
+    /* ==================== FORMULÁRIO NOVO TICKET ==================== */
+    .form-row {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+    
+    @media (max-width: 768px) {
+      .form-row {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    .file-upload {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .file-upload:hover {
+      border-color: var(--primary);
+      background: #FFEBEE;
+    }
+    
+    .file-upload-icon {
+      font-size: 48px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    
+    .file-preview {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    
+    .file-preview-item {
+      position: relative;
+      width: 80px;
+      height: 80px;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    
+    .file-preview-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    
+    .file-preview-item .remove {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 20px;
+      height: 20px;
+      background: var(--error);
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    
+    /* ==================== ADMIN ==================== */
+    .user-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    
+    .user-item {
+      display: flex;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    
+    .user-info {
+      flex: 1;
+      margin-left: 12px;
+    }
+    
+    .user-name {
+      font-weight: 500;
+    }
+    
+    .user-email {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    
+    .user-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    
+    /* ==================== FEEDBACK ==================== */
+    .feedback-stars {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      margin: 16px 0;
+    }
+    
+    .feedback-star {
+      font-size: 32px;
+      cursor: pointer;
+      color: var(--border);
+      transition: color 0.2s;
+    }
+    
+    .feedback-star:hover,
+    .feedback-star.active {
+      color: #FFC107;
+    }
+    
+    /* ==================== MODAL ==================== */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+    
+    .modal {
+      background: var(--card);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 500px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    
+    .modal-header {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    
+    .modal-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .modal-body {
+      padding: 20px;
+    }
+    
+    .modal-footer {
+      padding: 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+    
+    /* ==================== TOAST ==================== */
+    .toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 2000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    
+    .toast {
+      padding: 12px 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      animation: slideIn 0.3s ease;
+    }
+    
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    
+    .toast-success { background: #4CAF50; color: white; }
+    .toast-error { background: #F44336; color: white; }
+    .toast-warning { background: #FFC107; color: #212121; }
+    .toast-info { background: #2196F3; color: white; }
+    
+    /* ==================== LOADING ==================== */
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+    }
+    
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    /* ==================== EMPTY STATE ==================== */
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-muted);
+    }
+    
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    
+    /* ==================== FILTROS ==================== */
+    .filters {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    
+    .filter-btn {
+      padding: 8px 16px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: white;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    
+    .filter-btn:hover {
+      border-color: var(--primary);
+    }
+    
+    .filter-btn.active {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+    }
+    
+    /* ==================== FAB ==================== */
+    .fab {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: white;
+      border: none;
+      box-shadow: 0 4px 12px rgba(211, 47, 47, 0.3);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      transition: all 0.2s;
+    }
+    
+    .fab:hover {
+      transform: scale(1.1);
+      box-shadow: 0 6px 16px rgba(211, 47, 47, 0.4);
+    }
+    
+    /* ==================== RESPONSIVE ==================== */
+    @media (max-width: 768px) {
+      .header-title-text { display: none; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    
+    /* ==================== UTILITIES ==================== */
+    .hidden { display: none !important; }
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+    .mt-2 { margin-top: 8px; }
+    .mt-4 { margin-top: 16px; }
+    .mb-2 { margin-bottom: 8px; }
+    .mb-4 { margin-bottom: 16px; }
+    .flex { display: flex; }
+    .items-center { align-items: center; }
+    .justify-between { justify-content: space-between; }
+    .gap-2 { gap: 8px; }
+    .gap-4 { gap: 16px; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  
+  <div id="toast-container" class="toast-container"></div>
+
+  <script>
+    // ==================== ESTADO GLOBAL ====================
+    const state = {
+      user: <?= JSON.stringify(userData) ?>,
+      token: '<?= token ?>',
+      currentPage: '<?= page ?>',
+      tickets: [],
+      currentTicket: null,
+      interactions: [],
+      users: [],
+      invitations: [],
+      stats: null,
+      loading: false,
+      filter: 'todos'
+    };
+    
+    // ==================== UTILITÁRIOS ====================
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+    
+    function formatDate(dateStr) {
+      if (!dateStr) return '-';
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('pt-BR') + ' ' + date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    }
+    
+    function formatDateShort(dateStr) {
+      if (!dateStr) return '-';
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('pt-BR');
+    }
+    
+    function getStatusBadge(status) {
+      const config = {
+        'aberto': { label: 'Aberto', class: 'badge-info' },
+        'em_andamento': { label: 'Em Andamento', class: 'badge-warning' },
+        'aguardando_resposta': { label: 'Aguardando', class: 'badge-secondary' },
+        'resolvido': { label: 'Resolvido', class: 'badge-success' },
+        'fechado': { label: 'Fechado', class: 'badge-secondary' }
+      };
+      return config[status] || { label: status, class: 'badge-secondary' };
+    }
+    
+    function getPriorityBadge(priority) {
+      const config = {
+        'baixa': { label: 'Baixa', class: 'badge-success' },
+        'media': { label: 'Média', class: 'badge-warning' },
+        'alta': { label: 'Alta', class: 'badge-error' },
+        'critica': { label: 'Crítica', class: 'badge-error' }
+      };
+      return config[priority] || { label: priority, class: 'badge-secondary' };
+    }
+    
+    function getRoleBadge(role) {
+      const config = {
+        'admin': { label: 'Administrador', class: 'badge-error' },
+        'agente_ti': { label: 'Agente TI', class: 'badge-info' },
+        'solicitante': { label: 'Solicitante', class: 'badge-secondary' }
+      };
+      return config[role] || { label: role, class: 'badge-secondary' };
+    }
+    
+    function getInitials(name) {
+      if (!name) return '?';
+      return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+    }
+    
+    // ==================== API ====================
+    function callServer(functionName, ...args) {
+      return new Promise((resolve, reject) => {
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(reject)
+          [functionName](...args);
+      });
+    }
+    
+    // ==================== RENDERIZAÇÃO ====================
+    function render() {
+      const app = document.getElementById('app');
+      
+      if (!state.user && state.currentPage !== 'login' && state.currentPage !== 'register' && state.currentPage !== 'forgot-password') {
+        state.currentPage = 'login';
+      }
+      
+      switch (state.currentPage) {
+        case 'login':
+          app.innerHTML = renderLogin();
+          break;
+        case 'register':
+          app.innerHTML = renderRegister();
+          break;
+        case 'forgot-password':
+          app.innerHTML = renderForgotPassword();
+          break;
+        case 'home':
+          app.innerHTML = renderHome();
+          loadTickets();
+          break;
+        case 'dashboard':
+          app.innerHTML = renderDashboard();
+          loadDashboard();
+          break;
+        case 'novo-ticket':
+          app.innerHTML = renderNovoTicket();
+          break;
+        case 'ticket':
+          app.innerHTML = renderTicketDetail();
+          break;
+        case 'admin':
+          app.innerHTML = renderAdmin();
+          loadAdminData();
+          break;
+        default:
+          app.innerHTML = renderHome();
+      }
+    }
+    
+    // ==================== LOGIN ====================
+    function renderLogin() {
+      return `
+        <div class="auth-container">
+          <div class="card auth-card">
+            <div class="auth-logo">
+              <img src="https://i.imgur.com/placeholder.png" alt="Logo" class="header-logo">
+            </div>
+            <h1 class="auth-title">Help Desk</h1>
+            <p class="auth-subtitle">Grupo Astrotur</p>
+            
+            <form onsubmit="handleLogin(event)">
+              <div class="input-group">
+                <label>Email</label>
+                <input type="email" id="login-email" class="input" placeholder="seu@email.com" required>
+              </div>
+              <div class="input-group">
+                <label>Senha</label>
+                <input type="password" id="login-password" class="input" placeholder="********" required>
+              </div>
+              <div class="text-right mb-4">
+                <a href="#" class="auth-link" onclick="navigateTo('forgot-password')">Esqueci minha senha</a>
+              </div>
+              <button type="submit" class="btn btn-primary" style="width: 100%;" id="login-btn">
+                Entrar
+              </button>
+            </form>
+          </div>
+        </div>
+      `;
+    }
+    
+    async function handleLogin(e) {
+      e.preventDefault();
+      const btn = document.getElementById('login-btn');
+      btn.disabled = true;
+      btn.textContent = 'Entrando...';
+      
+      try {
+        const email = document.getElementById('login-email').value;
+        const password = document.getElementById('login-password').value;
+        
+        const result = await callServer('login', email, password);
+        
+        if (result.success) {
+          state.user = result.user;
+          state.token = result.token;
+          showToast('Login realizado com sucesso!', 'success');
+          
+          // Redirecionar baseado no role
+          if (result.user.role === 'solicitante') {
+            navigateTo('home');
+          } else {
+            navigateTo('dashboard');
+          }
+        } else {
+          showToast(result.error, 'error');
+        }
+      } catch (error) {
+        showToast('Erro ao fazer login', 'error');
+      }
+      
+      btn.disabled = false;
+      btn.textContent = 'Entrar';
+    }
+    
+    // ==================== REGISTRO ====================
+    function renderRegister() {
+      return `
+        <div class="auth-container">
+          <div class="card auth-card">
+            <div class="auth-logo">
+              <img src="https://i.imgur.com/placeholder.png" alt="Logo" class="header-logo">
+            </div>
+            <h1 class="auth-title">Completar Cadastro</h1>
+            <p class="auth-subtitle">Preencha seus dados para acessar o sistema</p>
+            
+            <div id="register-form-container">
+              <div class="loading">
+                <div class="spinner"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    
+    async function loadRegisterForm() {
+      const token = new URLSearchParams(window.location.search).get('token') || '<?= token ?>';
+      
+      try {
+        const result = await callServer('getInvitationByToken', token);
+        
+        if (result.success) {
+          document.getElementById('register-form-container').innerHTML = `
+            <p class="mb-4">Email: <strong>${result.invitation.email}</strong></p>
+            
+            <form onsubmit="handleRegister(event)">
+              <input type="hidden" id="register-token" value="${token}">
+              
+              <div class="input-group">
+                <label>Nome Completo *</label>
+                <input type="text" id="register-nome" class="input" required>
+              </div>
+              <div class="input-group">
+                <label>Senha *</label>
+                <input type="password" id="register-senha" class="input" required minlength="6">
+              </div>
+              <div class="input-group">
+                <label>Confirmar Senha *</label>
+                <input type="password" id="register-senha-confirm" class="input" required>
+              </div>
+              <div class="form-row">
+                <div class="input-group">
+                  <label>Telefone</label>
+                  <input type="tel" id="register-telefone" class="input">
+                </div>
+                <div class="input-group">
+                  <label>Setor</label>
+                  <input type="text" id="register-setor" class="input">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="input-group">
+                  <label>Função</label>
+                  <input type="text" id="register-funcao" class="input">
+                </div>
+                <div class="input-group">
+                  <label>Número AnyDesk</label>
+                  <input type="text" id="register-anydesk" class="input">
+                </div>
+              </div>
+              
+              <button type="submit" class="btn btn-primary" style="width: 100%;" id="register-btn">
+                Cadastrar
+              </button>
+            </form>
+          `;
+        } else {
+          document.getElementById('register-form-container').innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">⚠️</div>
+              <p>${result.error}</p>
+              <button class="btn btn-primary mt-4" onclick="navigateTo('login')">Ir para Login</button>
+            </div>
+          `;
+        }
+      } catch (error) {
+        document.getElementById('register-form-container').innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">❌</div>
+            <p>Erro ao carregar convite</p>
+          </div>
+        `;
+      }
+    }
+    
+    async function handleRegister(e) {
+      e.preventDefault();
+      
+      const senha = document.getElementById('register-senha').value;
+      const senhaConfirm = document.getElementById('register-senha-confirm').value;
+      
+      if (senha !== senhaConfirm) {
+        showToast('As senhas não coincidem', 'error');
+        return;
+      }
+      
+      const btn = document.getElementById('register-btn');
+      btn.disabled = true;
+      btn.textContent = 'Cadastrando...';
+      
+      try {
+        const token = document.getElementById('register-token').value;
+        const userData = {
+          nome: document.getElementById('register-nome').value,
+          senha: senha,
+          telefone: document.getElementById('register-telefone').value,
+          setor: document.getElementById('register-setor').value,
+          funcao: document.getElementById('register-funcao').value,
+          num_anydesk: document.getElementById('register-anydesk').value
+        };
+        
+        const result = await callServer('registerWithInvitation', token, userData);
+        
+        if (result.success) {
+          showToast('Cadastro realizado! Faça login para continuar.', 'success');
+          navigateTo('login');
+        } else {
+          showToast(result.error, 'error');
+        }
+      } catch (error) {
+        showToast('Erro ao cadastrar', 'error');
+      }
+      
+      btn.disabled = false;
+      btn.textContent = 'Cadastrar';
+    }
+    
+    // ==================== ESQUECI SENHA ====================
+    function renderForgotPassword() {
+      return `
+        <div class="auth-container">
+          <div class="card auth-card">
+            <h1 class="auth-title">Recuperar Senha</h1>
+            <p class="auth-subtitle">Informe seu email para receber uma nova senha</p>
+            
+            <form onsubmit="handleForgotPassword(event)">
+              <div class="input-group">
+                <label>Email</label>
+                <input type="email" id="forgot-email" class="input" required>
+              </div>
+              <button type="submit" class="btn btn-primary" style="width: 100%;" id="forgot-btn">
+                Enviar Nova Senha
+              </button>
+            </form>
+            
+            <p class="text-center mt-4">
+              <a href="#" class="auth-link" onclick="navigateTo('login')">Voltar ao Login</a>
+            </p>
+          </div>
+        </div>
+      `;
+    }
+    
+    async function handleForgotPassword(e) {
+      e.preventDefault();
+      const btn = document.getElementById('forgot-btn');
+      btn.disabled = true;
+      btn.textContent = 'Enviando...';
+      
+      try {
+        const email = document.getElementById('forgot-email').value;
+        const result = await callServer('resetPassword', email);
+        
+        if (result.success) {
+          showToast('Nova senha enviada para seu email', 'success');
+          navigateTo('login');
+        } else {
+          showToast(result.error, 'error');
+        }
+      } catch (error) {
+        showToast('Erro ao recuperar senha', 'error');
+      }
+      
+      btn.disabled = false;
+      btn.textContent = 'Enviar Nova Senha';
+    }
+    
+    // ==================== HEADER ====================
+    function renderHeader() {
+      const showAdmin = state.user?.role === 'admin';
+      const showDashboard = state.user?.role !== 'solicitante';
+      
+      return `
+        <header class="header">
+          <div class="container header-content">
+            <div class="header-left">
+              <img src="https://i.imgur.com/placeholder.png" alt="Logo" class="header-logo">
+              <div class="header-title-text">
+                <div class="header-title">Help Desk</div>
+                <div class="header-subtitle">Grupo Astrotur</div>
+              </div>
+            </div>
+            <div class="header-right">
+              ${showDashboard ? `<button class="btn btn-ghost" onclick="navigateTo('dashboard')">Dashboard</button>` : ''}
+              ${showAdmin ? `<button class="btn btn-ghost" onclick="navigateTo('admin')">Admin</button>` : ''}
+              <div class="header-user">
+                <div class="avatar">${getInitials(state.user?.nome)}</div>
+                <span class="header-user-name">${state.user?.nome || ''}</span>
+              </div>
+              <button class="btn btn-ghost btn-icon" onclick="handleLogout()" title="Sair">🚪</button>
+            </div>
+          </div>
+        </header>
+      `;
+    }
+    
+    async function handleLogout() {
+      try {
+        await callServer('logout', state.token);
+      } catch (error) {}
+      
+      state.user = null;
+      state.token = '';
+      navigateTo('login');
+    }
+    
+    // ==================== HOME (SOLICITANTE) ====================
+    function renderHome() {
+      return `
+        ${renderHeader()}
+        <main class="container" style="padding: 24px 16px;">
+          <div class="flex items-center justify-between mb-4">
+            <h2>Meus Tickets</h2>
+            <span class="badge badge-info">${state.user?.role === 'solicitante' ? 'Solicitante' : getRoleBadge(state.user?.role).label}</span>
+          </div>
+          
+          <div class="filters">
+            <button class="filter-btn ${state.filter === 'todos' ? 'active' : ''}" onclick="setFilter('todos')">Todos</button>
+            <button class="filter-btn ${state.filter === 'aberto' ? 'active' : ''}" onclick="setFilter('aberto')">Abertos</button>
+            <button class="filter-btn ${state.filter === 'em_andamento' ? 'active' : ''}" onclick="setFilter('em_andamento')">Em Andamento</button>
+            <button class="filter-btn ${state.filter === 'resolvido' ? 'active' : ''}" onclick="setFilter('resolvido')">Resolvidos</button>
+          </div>
+          
+          <div id="tickets-list" class="ticket-list">
+            <div class="loading"><div class="spinner"></div></div>
+          </div>
+        </main>
+        
+        <button class="fab" onclick="navigateTo('novo-ticket')" title="Novo Ticket">+</button>
+      `;
+    }
+    
+    async function loadTickets() {
+      try {
+        const result = await callServer('getTickets', state.token, { status: state.filter === 'todos' ? null : state.filter });
+        
+        if (result.success) {
+          state.tickets = result.tickets;
+          renderTicketsList();
+        } else {
+          showToast(result.error, 'error');
+        }
+      } catch (error) {
+        showToast('Erro ao carregar tickets', 'error');
+      }
+    }
+    
+    function renderTicketsList() {
+      const container = document.getElementById('tickets-list');
+      
+      if (state.tickets.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">📋</div>
+            <p>Nenhum ticket encontrado</p>
+            <button class="btn btn-primary mt-4" onclick="navigateTo('novo-ticket')">Criar Novo Ticket</button>
+          </div>
+        `;
+        return;
+      }
+      
+      container.innerHTML = state.tickets.map(ticket => {
+        const statusBadge = getStatusBadge(ticket.status);
+        const priorityBadge = getPriorityBadge(ticket.prioridade);
+        
+        return `
+          <div class="ticket-item" onclick="openTicket('${ticket.id}')">
+            <div class="ticket-info">
+              <div class="ticket-protocol">${ticket.protocolo}</div>
+              <div class="ticket-title">${ticket.titulo}</div>
+              <div class="ticket-meta">${formatDateShort(ticket.created_at)}</div>
+            </div>
+            <div class="ticket-badges">
+              <span class="badge ${priorityBadge.class}">${priorityBadge.label}</span>
+              <span class="badge ${statusBadge.class}">${statusBadge.label}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+    
+    function setFilter(filter) {
+      state.filter = filter;
+      document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+      event.target.classList.add('active');
+      loadTickets();
+    }
+    
+    async function openTicket(ticketId) {
+      state.loading = true;
+      
+      try {
+        const result = await callServer('getTicketById', state.token, ticketId);
+        
+        if (result.success) {
+          state.currentTicket = result.ticket;
+          navigateTo('ticket');
+        } else {
+          showToast(result.error, 'error');
+        }
+      } catch (error) {
+        showToast('Erro ao carregar ticket', 'error');
+      }
+      
+      state.loading = false;
+    }
+    
+    // ==================== DASHBOARD (AGENTES) ====================
+    function renderDashboard() {
+      return `
+        ${renderHeader()}
+        <main class="container" style="padding: 24px 16px;">
+          <h2 class="mb-4">Dashboard</h2>
+          
+          <div id="stats-grid" class="stats-grid">
+            <div class="card stat-card">
+              <div class="loading"><div class="spinner"></div></div>
+            </div>
+          </div>
+          
+          <div class="card">
+            <h3 class="mb-4">Todos os Tickets</h3>
+            
+            <div class="filters">
+              <button class="filter-btn ${state.filter === 'todos' ? 'active' : ''}" onclick="setFilter('todos')">Todos</button>
+              <button class="filter-btn ${state.filter === 'aberto' ? 'active' : ''}" onclick="setFilter('aberto')">Abertos</button>
+              <button class="filter-btn ${state.filter === 'em_andamento' ? 'active' : ''}" onclick="setFilter('em_andamento')">Em Andamento</button>
+              <button class="filter-btn ${state.filter === 'aguardando_resposta' ? 'active' : ''}" onclick="setFilter('aguardando_resposta')">Aguardando</button>
+              <button class="filter-btn ${state.filter === 'resolvido' ? 'active' : ''}" onclick="setFilter('resolvido')">Resolvidos</button>
+            </div>
+            
+            <div id="tickets-list" class="ticket-list">
+              <div class="loading"><div class="spinner"></div></div>
+            </div>
+          </div>
+        </main>
+      `;
+    }
+    
+    async function loadDashboard() {
+      try {
+        const [statsResult, ticketsResult] = await Promise.all([
+          callServer('getDashboardStats', state.token),
+          callServer('getTickets', state.token, { status: state.filter === 'todos' ? null : state.filter })
+        ]);
+        
+        if (statsResult.success) {
+          state.stats = statsResult.stats;
+          renderStats();
+        }
+        
+        if (ticketsResult.success) {
+          state.tickets = ticketsResult.tickets;
+          renderTicketsListDashboard();
+        }
+      } catch (error) {
+        showToast('Erro ao carregar dashboard', 'error');
+      }
+    }
+    
+    function renderStats() {
+      const container = document.getElementById('stats-grid');
+      const stats = state.stats;
+      
+      container.innerHTML = `
+        <div class="card stat-card">
+          <div class="stat-label">Novos (Abertos)</div>
+          <div class="stat-value" style="color: #2196F3;">${stats.abertos}</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-label">Em Andamento</div>
+          <div class="stat-value" style="color: #FFC107;">${stats.em_andamento}</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-label">Resolvidos</div>
+          <div class="stat-value" style="color: #4CAF50;">${stats.resolvidos}</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-label">Satisfação Média</div>
+          <div class="stat-value" style="color: #D32F2F;">${stats.media_satisfacao}${stats.media_satisfacao !== '-' ? '⭐' : ''}</div>
+        </div>
+      `;
+    }
+    
+    function renderTicketsListDashboard() {
+      const container = document.getElementById('tickets-list');
+      
+      if (state.tickets.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">📋</div>
+            <p>Nenhum ticket encontrado</p>
+          </div>
+        `;
+        return;
+      }
+      
+      container.innerHTML = state.tickets.map(ticket => {
+        const statusBadge = getStatusBadge(ticket.status);
+        const priorityBadge = getPriorityBadge(ticket.prioridade);
+        
+        return `
+          <div class="ticket-item" onclick="openTicket('${ticket.id}')">
+            <div class="ticket-info">
+              <div class="ticket-protocol">${ticket.protocolo}</div>
+              <div class="ticket-title">${ticket.titulo}</div>
+              <div class="ticket-meta">
+                ${ticket.solicitante?.nome || 'Desconhecido'} • ${ticket.solicitante?.setor || ''} • ${formatDateShort(ticket.created_at)}
+              </div>
+            </div>
+            <div class="ticket-badges">
+              <span class="badge ${priorityBadge.class}">${priorityBadge.label}</span>
+              <span class="badge ${statusBadge.class}">${statusBadge.label}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+    
+    // ==================== NOVO TICKET ====================
+    function renderNovoTicket() {
+      return `
+        ${renderHeader()}
+        <main class="container" style="padding: 24px 16px; max-width: 800px;">
+          <div class="flex items-center gap-4 mb-4">
+            <button class="btn btn-ghost btn-icon" onclick="navigateTo('home')">←</button>
+            <h2>Novo Ticket</h2>
+          </div>
+          
+          <div class="card">
+            <form onsubmit="handleCreateTicket(event)">
+              <div class="input-group">
+                <label>Título *</label>
+                <input type="text" id="ticket-titulo" class="input" placeholder="Descreva brevemente o problema" required>
+              </div>
+              
+              <div class="input-group">
+                <label>Descrição Detalhada *</label>
+                <textarea id="ticket-descricao" class="input" rows="5" placeholder="Explique o problema com o máximo de detalhes possível..." required></textarea>
+              </div>
+              
+              <div class="input-group">
+                <label>Prioridade</label>
+                <select id="ticket-prioridade" class="select">
+                  <option value="baixa">Baixa (Tranquila)</option>
+                  <option value="media" selected>Média</option>
+                  <option value="alta">Alta (Urgente)</option>
+                  <option value="critica">Crítica (Interrupção de Serviço)</option>
+                </select>
+              </div>
+              
+              <div class="input-group">
+                <label>Anexos</label>
+                <div class="file-upload" onclick="document.getElementById('file-input').click()">
+                  <div class="file-upload-icon">📎</div>
+                  <p>Clique para adicionar fotos, arquivos ou prints</p>
+                  <p style="font-size: 12px; color: var(--text-muted);">PNG, JPG, PDF, DOC até 10MB</p>
+                </div>
+                <input type="file" id="file-input" multiple accept="image/*,.pdf,.doc,.docx" style="display: none;" onchange="handleFileSelect(event)">
+                <div id="file-preview" class="file-preview"></div>
+              </div>
+              
+              <div class="flex gap-4 mt-4">
+                <button type="button" class="btn btn-outline" onclick="navigateTo('home')">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="create-ticket-btn" style="flex: 1;">
+                  Criar Ticket
+                </button>
+              </div>
+            </form>
+          </div>
+        </main>
+      `;
+    }
+    
+    let selectedFiles = [];
+    
+    function handleFileSelect(event) {
+      const files = Array.from(event.target.files);
+      selectedFiles = [...selectedFiles, ...files];
+      renderFilePreview();
+    }
+    
+    function renderFilePreview() {
+      const container = document.getElementById('file-preview');
+      
+      container.innerHTML = selectedFiles.map((file, index) => {
+        const isImage = file.type.startsWith('image/');
+        const preview = isImage ? URL.createObjectURL(file) : '';
+        
+        return `
+          <div class="file-preview-item">
+            ${isImage 
+              ? `<img src="${preview}" alt="${file.name}">`
+              : `<div style="display: flex; align-items: center; justify-content: center; height: 100%; background: var(--background);">📄</div>`
+            }
+            <div class="remove" onclick="removeFile(${index})">×</div>
+          </div>
+        `;
+      }).join('');
+    }
+    
+    function removeFile(index) {
+      selectedFiles.splice(index, 1);
+      renderFilePreview();
+    }
+    
+    async function handleCreateTicket(e) {
+      e.preventDefault();
+      const btn = document.getElementById('create-ticket-btn');
+      btn.disabled = true;
+      btn.textContent = 'Criando...';
+      
+      try {
+        // Upload de arquivos
+        const anexos = { imagens: [], arquivos: [], audio: null };
+        
+        for (const file of selectedFiles) {
+          const base64 = await fileToBase64(file);
+          const uploadResult = await callServer('uploadFile', base64, file.name, file.type);
+          
+          if (uploadResult.success) {
+            if (file.type.startsWith('image/')) {
+              anexos.imagens.push({ nome: file.name, url: uploadResult.downloadUrl });
+            } else {
+              anexos.arquivos.push({ nome: file.name, url: uploadResult.downloadUrl });
+            }
+          }
+        }
+        
+        const ticketData = {
+          titulo: document.getElementById('ticket-titulo').value,
+          descricao: document.getElementById('ticket-descricao').value,
+          prioridade: document.getElementById('ticket-prioridade').value,
+          anexos: anexos
+        };
+        
+        const result = await callServer('createTicket', state.token, ticketData);
+        
+        if (result.success) {
+          showToast(`Ticket ${result.protocolo} criado com sucesso!`, 'success');
+          selectedFiles = [];
+          navigateTo('home');
+        } else {
+          showToast(result.error, 'error');
+        }
+      } catch (error) {
+        showToast('Erro ao criar ticket', 'error');
+      }
+      
+      btn.disabled = false;
+      btn.textContent = 'Criar Ticket';
+    }
+    
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+    
+    // ==================== DETALHE DO TICKET ====================
+    function renderTicketDetail() {
+      const ticket = state.currentTicket;
+      if (!ticket) {
+        return `
+          ${renderHeader()}
+          <main class="container" style="padding: 24px 16px;">
+            <div class="loading"><div class="spinner"></div></div>
+          </main>
+        `;
+      }
+      
+      const statusBadge = getStatusBadge(ticket.status);
+      const priorityBadge = getPriorityBadge(ticket.prioridade);
+      const isAgent = state.user?.role !== 'solicitante';
+      const canChat = ticket.status !== 'fechado';
+      
+      return `
+        ${renderHeader()}
+        <main class="container" style="padding: 24px 16px;">
+          <div class="flex items-center gap-4 mb-4">
+            <button class="btn btn-ghost btn-icon" onclick="navigateTo('${isAgent ? 'dashboard' : 'home'}')">←</button>
+            <div style="flex: 1;">
+              <div class="ticket-detail-protocol">${ticket.protocolo}</div>
+              <h2 class="ticket-detail-title">${ticket.titulo}</h2>
+            </div>
+            <span class="badge ${priorityBadge.class}">${priorityBadge.label}</span>
+            <span class="badge ${statusBadge.class}">${statusBadge.label}</span>
+          </div>
+          
+          <div class="ticket-detail-content">
+            <div>
+              <div class="card">
+                <h3 class="mb-4">Descrição</h3>
+                <div class="ticket-description">${ticket.descricao}</div>
+                
+                ${ticket.anexos?.imagens?.length > 0 ? `
+                  <h4 class="mb-2">Imagens</h4>
+                  <div class="file-preview mb-4">
+                    ${ticket.anexos.imagens.map(img => `
+                      <div class="file-preview-item">
+                        <a href="${img.url}" target="_blank">
+                          <img src="${img.url}" alt="${img.nome}">
+                        </a>
+                      </div>
+                    `).join('')}
+                  </div>
+                ` : ''}
+                
+                ${ticket.anexos?.arquivos?.length > 0 ? `
+                  <h4 class="mb-2">Arquivos</h4>
+                  <div class="mb-4">
+                    ${ticket.anexos.arquivos.map(arq => `
+                      <a href="${arq.url}" target="_blank" class="btn btn-outline" style="margin-right: 8px; margin-bottom: 8px;">
+                        📄 ${arq.nome}
+                      </a>
+                    `).join('')}
+                  </div>
+                ` : ''}
+              </div>
+              
+              <div class="card chat-container">
+                <div class="chat-header">💬 Conversação</div>
+                <div id="chat-messages" class="chat-messages">
+                  <div class="loading"><div class="spinner"></div></div>
+                </div>
+                ${canChat ? `
+                  <div class="chat-input">
+                    <input type="text" id="chat-input" class="input" placeholder="Digite sua mensagem..." onkeypress="if(event.key==='Enter')sendMessage()">
+                    <button class="btn btn-primary" onclick="sendMessage()">Enviar</button>
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+            
+            <div>
+              ${isAgent ? `
+                <div class="card sidebar-section">
+                  <div class="sidebar-section-title">⚙️ Gerenciar Ticket</div>
+                  
+                  <div class="input-group">
+                    <label>Status</label>
+                    <select id="ticket-status" class="select" onchange="updateTicketStatus()">
+                      <option value="aberto" ${ticket.status === 'aberto' ? 'selected' : ''}>Aberto</option>
+                      <option value="em_andamento" ${ticket.status === 'em_andamento' ? 'selected' : ''}>Em Andamento</option>
+                      <option value="aguardando_resposta" ${ticket.status === 'aguardando_resposta' ? 'selected' : ''}>Aguardando Resposta</option>
+                      <option value="resolvido" ${ticket.status === 'resolvido' ? 'selected' : ''}>Resolvido</option>
+                      <option value="fechado" ${ticket.status === 'fechado' ? 'selected' : ''}>Fechado</option>
+                    </select>
+                  </div>
+                  
+                  <div class="input-group">
+                    <label>Prioridade</label>
+                    <select id="ticket-priority" class="select" onchange="updateTicketPriority()">
+                      <option value="baixa" ${ticket.prioridade === 'baixa' ? 'selected' : ''}>Baixa</option>
+                      <option value="media" ${ticket.prioridade === 'media' ? 'selected' : ''}>Média</option>
+                      <option value="alta" ${ticket.prioridade === 'alta' ? 'selected' : ''}>Alta</option>
+                      <option value="critica" ${ticket.prioridade === 'critica' ? 'selected' : ''}>Crítica</option>
+                    </select>
+                  </div>
+                </div>
+              ` : ''}
+              
+              ${ticket.solicitante ? `
+                <div class="card sidebar-section">
+                  <div class="sidebar-section-title">👤 Solicitante</div>
+                  <div class="info-row">
+                    <span class="info-label">Nome</span>
+                    <span class="info-value">${ticket.solicitante.nome}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Email</span>
+                    <span class="info-value">${ticket.solicitante.email}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Telefone</span>
+                    <span class="info-value">${ticket.solicitante.telefone || '-'}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Setor</span>
+                    <span class="info-value">${ticket.solicitante.setor || '-'}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">AnyDesk</span>
+                    <span class="info-value">${ticket.solicitante.num_anydesk || '-'}</span>
+                  </div>
+                </div>
+              ` : ''}
+              
+              <div class="card sidebar-section">
+                <div class="sidebar-section-title">📋 Detalhes</div>
+                <div class="info-row">
+                  <span class="info-label">Criado em</span>
+                  <span class="info-value">${formatDate(ticket.created_at)}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Atualizado</span>
+                  <span class="info-value">${formatDate(ticket.updated_at)}</span>
+                </div>
+                ${ticket.closed_at ? `
+                  <div class="info-row">
+                    <span class="info-label">Fechado em</span>
+                    <span class="info-value">${formatDate(ticket.closed_at)}</span>
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+          </div>
+        </main>
+        
+        <div id="feedback-modal" class="modal-overlay hidden">
+          <div class="modal">
+            <div class="modal-header">
+              <span class="modal-title">⭐ Avalie o Atendimento</span>
+            </div>
+            <div class="modal-body">
+              <p class="text-center mb-4">Como você avalia a resolução do seu chamado?</p>
+              
+              <div class="feedback-stars" id="feedback-stars">
+                ${[1,2,3,4,5].map(n => `<span class="feedback-star" data-rating="${n}" onclick="setRating(${n})">★</span>`).join('')}
+              </div>
+              
+              <div class="input-group">
+                <label>A solução foi eficaz?</label>
+                <select id="feedback-eficacia" class="select">
+                  <option value="true">Sim</option>
+                  <option value="false">Não</option>
+                </select>
+              </div>
+              
+              <div class="input-group">
+                <label>O tempo de resposta foi satisfatório?</label>
+                <select id="feedback-tempo" class="select">
+                  <option value="excelente">Excelente</option>
+                  <option value="bom">Bom</option>
+                  <option value="regular">Regular</option>
+                  <option value="ruim">Ruim</option>
+                </select>
+              </div>
+              
+              <div class="input-group">
+                <label>Comentários (opcional)</label>
+                <textarea id="feedback-comentarios" class="input" rows="3"></textarea>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-outline" onclick="closeFeedbackModal()">Cancelar</button>
+              <button class="btn btn-primary" onclick="submitFeedback()">Enviar Avaliação</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    
+    let selectedRating = 0;
+    
+    function setRating(rating) {
+      selectedRating = rating;
+      document.querySelectorAll('.feedback-star').forEach((star, index) => {
+        star.classList.toggle('active', index < rating);
+      });
+    }
+    
+    async function loadInteractions() {
+      try {
+        const result = await callServer('getInteractions', state.token, state.currentTicket.id);
+        
+        if (result.success) {
+          state.interactions = result.interactions;
+          renderInteractions();
+          
+          // Verificar se precisa mostrar feedback
+          if (state.currentTicket.status === 'resolvido' && state.currentTicket.solicitante_id === state.user?.id) {
+            checkFeedback();
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao carregar interações:', error);
+      }
+    }
+    
+    function renderInteractions() {
+      const container = document.getElementById('chat-messages');
+      
+      if (state.interactions.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <p>Nenhuma mensagem ainda</p>
+          </div>
+        `;
+        return;
+      }
+      
+      container.innerHTML = state.interactions.map(interaction => {
+        const isMine = interaction.autor_id === state.user?.id;
+        const isSystem = interaction.tipo === 'mudanca_status';
+        
+        if (isSystem) {
+          return `<div class="chat-message system">${interaction.mensagem}</div>`;
+        }
+        
+        return `
+          <div class="chat-message ${isMine ? 'sent' : 'received'}">
+            <div class="chat-message-author">${interaction.autor?.nome || 'Desconhecido'}</div>
+            <div>${interaction.mensagem}</div>
+            <div class="chat-message-time">${formatDate(interaction.created_at)}</div>
+          </div>
+        `;
+      }).join('');
+      
+      container.scrollTop = container.scrollHeight;
+    }
+    
+    async function sendMessage() {
+      const input = document.getElementById('chat-input');
+      const message = input.value.trim();
+      
+      if (!message) return;
+      
+      input.value = '';
+      
+      try {
+        const result = await callServer('addInteraction', state.token, state.currentTicket.id, {
+          mensagem: message,
+          tipo: 'texto'
+        });
+        
+        if (result.success) {
+          loadInteractions();
+        } else {
+          showToast(result.error, 'error');
+        }
+      } catch (error) {
+        showToast('Erro ao enviar mensagem', 'error');
+      }
+    }
+    
+    async function updateTicketStatus() {
+      const newStatus = document.getElementById('ticket-status').value;
+      
+      try {
+        const result = await callServer('updateTicket', state.token, state.currentTicket.id, { status: newStatus });
+        
+        if (result.success) {
+          state.currentTicket.status = newStatus;
+          showToast('Status atualizado', 'success');
+          loadInteractions();
+        } else {
+          showToast(result.error, 'error');
+        }
+      } catch (error) {
+        showToast('Erro ao atualizar status', 'error');
+      }
+    }
+    
+    async function updateTicketPriority() {
+      const newPriority = document.getElementById('ticket-priority').value;
+      
+      try {
+        const result = await callServer('updateTicket', state.token, state.currentTicket.id, { prioridade: newPriority });
+        
+        if (result.success) {
+          state.currentTicket.prioridade = newPriority;
+          showToast('Prioridade atualizada', 'success');
+        } else {
+          showToast(result.error, 'error');
+        }
+      } catch (error) {
+        showToast('Erro ao atualizar prioridade', 'error');
+      }
+    }
+    
+    async function checkFeedback() {
+      try {
+        const result = await callServer('checkFeedback', state.token, state.currentTicket.id);
+        
+        if (result.success && !result.exists) {
+          document.getElementById('feedback-modal').classList.remove('hidden');
+        }
+      } catch (error) {}
+    }
+    
+    function closeFeedbackModal() {
+      document.getElementById('feedback-modal').classList.add('hidden');
+    }
+    
+    async function submitFeedback() {
+      if (selectedRating === 0) {
+        showToast('Selecione uma nota', 'warning');
+        return;
+      }
+      
+      try {
+        const feedbackData = {
+          nota_satisfacao: selectedRating,
+          eficacia_solucao: document.getElementById('feedback-eficacia').value === 'true',
+          tempo_resposta: document.getElementById('feedback-tempo').value,
+          comentarios: document.getElementById('feedback-comentarios').value
+        };
+        
+        const result = await callServer('submitFeedback', state.token, state.currentTicket.id, feedbackData);
+        
+        if (result.success) {
+          showToast('Obrigado pelo feedback!', 'success');
+          closeFeedbackModal();
+          navigateTo('home');
+        } else {
+          showToast(result.error, 'error');
+        }
+      } catch (error) {
+        showToast('Erro ao enviar feedback', 'error');
+      }
+    }
+    
+    // ==================== ADMIN ====================
+    function renderAdmin() {
+      if (state.user?.role !== 'admin') {
+        navigateTo('home');
+        return '';
+      }
+      
+      return `
+        ${renderHeader()}
+        <main class="container" style="padding: 24px 16px;">
+          <div class="flex items-center gap-4 mb-4">
+            <button class="btn btn-ghost btn-icon" onclick="navigateTo('dashboard')">←</button>
+            <h2>Administração</h2>
+          </div>
+          
+          <div class="nav-tabs">
+            <div class="nav-tab active" onclick="switchAdminTab('usuarios')">👥 Usuários</div>
+            <div class="nav-tab" onclick="switchAdminTab('convites')">📧 Convites</div>
+          </div>
+          
+          <div id="admin-content">
+            <div class="loading"><div class="spinner"></div></div>
+          </div>
+        </main>
+        
+        <div id="invite-modal" class="modal-overlay hidden">
+          <div class="modal">
+            <div class="modal-header">
+              <span class="modal-title">Novo Convite</span>
+              <button class="btn btn-ghost btn-icon" onclick="closeInviteModal()">×</button>
+            </div>
+            <div class="modal-body">
+              <div class="input-group">
+                <label>Email</label>
+                <input type="email" id="invite-email" class="input" placeholder="email@empresa.com">
+              </div>
+              <div class="input-group">
+                <label>Função</label>
+                <select id="invite-role" class="select">
+                  <option value="solicitante">Solicitante</option>
+                  <option value="agente_ti">Agente TI</option>
+                  <option value="admin">Administrador</option>
+                </select>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-outline" onclick="closeInviteModal()">Cancelar</button>
+              <button class="btn btn-primary" onclick="sendInvitation()">Enviar Convite</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    
+    let currentAdminTab = 'usuarios';
+    
+    function switchAdminTab(tab) {
+      currentAdminTab = tab;
+      document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+      renderAdminContent();
+    }
+    
+    async function loadAdminData() {
+      try {
+        const [usersResult, invitationsResult] = await Promise.all([
+          callServer('getUsers', state.token),
+          callServer('getInvitations', state.token)
+        ]);
+        
+        if (usersResult.success) state.users = usersResult.users;
+        if (invitationsResult.success) state.invitations = invitationsResult.invitations;
+        
+        renderAdminContent();
+      } catch (error) {
+        showToast('Erro ao carregar dados', 'error');
+      }
+    }
+    
+    function renderAdminContent() {
+      const container = document.getElementById('admin-content');
+      
+      if (currentAdminTab === 'usuarios') {
+        container.innerHTML = `
+          <div class="card">
+            <h3 class="mb-4">Usuários (${state.users.length})</h3>
+            <div class="user-list">
+              ${state.users.map(user => {
+                const roleBadge = getRoleBadge(user.role);
+                return `
+                  <div class="user-item">
+                    <div class="avatar">${getInitials(user.nome)}</div>
+                    <div class="user-info">
+                      <div class="user-name">${user.nome}</div>
+                      <div class="user-email">${user.email}</div>
+                    </div>
+                    <div class="user-actions">
+                      <span class="badge ${roleBadge.class}">${roleBadge.label}</span>
+                      <select class="select" style="width: auto;" onchange="changeUserRole('${user.id}', this.value)">
+                        <option value="solicitante" ${user.role === 'solicitante' ? 'selected' : ''}>Solicitante</option>
+                        <option value="agente_ti" ${user.role === 'agente_ti' ? 'selected' : ''}>Agente TI</option>
+                        <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option>
+                      </select>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      } else {
+        container.innerHTML = `
+          <div class="card">
+            <div class="flex justify-between items-center mb-4">
+              <h3>Convites</h3>
+              <button class="btn btn-primary" onclick="openInviteModal()">+ Novo Convite</button>
+            </div>
+            
+            ${state.invitations.length === 0 ? `
+              <div class="empty-state">
+                <div class="empty-state-icon">📧</div>
+                <p>Nenhum convite enviado</p>
+              </div>
+            ` : `
+              <div class="user-list">
+                ${state.invitations.map(inv => {
+                  const roleBadge = getRoleBadge(inv.role);
+                  const isExpired = new Date(inv.expires_at) < new Date();
+                  
+                  return `
+                    <div class="user-item">
+                      <div class="avatar">📧</div>
+                      <div class="user-info">
+                        <div class="user-name">${inv.email}</div>
+                        <div class="user-email">
+                          ${inv.used ? '✅ Utilizado' : isExpired ? '❌ Expirado' : `⏳ Expira: ${formatDateShort(inv.expires_at)}`}
+                        </div>
+                      </div>
+                      <div class="user-actions">
+                        <span class="badge ${roleBadge.class}">${roleBadge.label}</span>
+                        ${!inv.used ? `<button class="btn btn-ghost" onclick="deleteInvitation('${inv.id}')">🗑️</button>` : ''}
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `}
+          </div>
+        `;
+      }
+    }
+    
+    async function changeUserRole(userId, newRole) {
+      try {
+        const result = await callServer('updateUserRole', state.token, userId, newRole);
+        
+        if (result.success) {
+          showToast('Função atualizada', 'success');
+          loadAdminData();
+        } else {
+          showToast(result.error, 'error');
+        }
+      } catch (error) {
+        showToast('Erro ao atualizar função', 'error');
+      }
+    }
+    
+    function openInviteModal() {
+      document.getElementById('invite-modal').classList.remove('hidden');
+    }
+    
+    function closeInviteModal() {
+      document.getElementById('invite-modal').classList.add('hidden');
+    }
+    
+    async function sendInvitation() {
+      const email = document.getElementById('invite-email').value;
+      const role = document.getElementById('invite-role').value;
+      
+      if (!email) {
+        showToast('Informe o email', 'warning');
+        return;
+      }
+      
+      try {
+        const result = await callServer('createInvitation', state.token, email, role);
+        
+        if (result.success) {
+          showToast('Convite enviado com sucesso!', 'success');
+          closeInviteModal();
+          loadAdminData();
+        } else {
+          showToast(result.error, 'error');
+        }
+      } catch (error) {
+        showToast('Erro ao enviar convite', 'error');
+      }
+    }
+    
+    async function deleteInvitation(invitationId) {
+      if (!confirm('Excluir este convite?')) return;
+      
+      try {
+        const result = await callServer('deleteInvitation', state.token, invitationId);
+        
+        if (result.success) {
+          showToast('Convite excluído', 'success');
+          loadAdminData();
+        } else {
+          showToast(result.error, 'error');
+        }
+      } catch (error) {
+        showToast('Erro ao excluir convite', 'error');
+      }
+    }
+    
+    // ==================== NAVEGAÇÃO ====================
+    function navigateTo(page, params = {}) {
+      state.currentPage = page;
+      
+      // Atualizar URL sem recarregar
+      const url = new URL(window.location.href);
+      url.searchParams.set('page', page);
+      Object.keys(params).forEach(key => url.searchParams.set(key, params[key]));
+      history.pushState({}, '', url);
+      
+      render();
+      
+      // Carregar dados específicos da página
+      if (page === 'ticket' && state.currentTicket) {
+        setTimeout(loadInteractions, 100);
+      }
+      if (page === 'register') {
+        setTimeout(loadRegisterForm, 100);
+      }
+    }
+    
+    // ==================== INICIALIZAÇÃO ====================
+    document.addEventListener('DOMContentLoaded', () => {
+      render();
+      
+      // Verificar página de registro
+      if (state.currentPage === 'register') {
+        setTimeout(loadRegisterForm, 100);
+      }
+    });
+    
+    // Handle back button
+    window.addEventListener('popstate', () => {
+      const url = new URL(window.location.href);
+      state.currentPage = url.searchParams.get('page') || 'login';
+      render();
+    });
+  </script>
+</body>
+</html>
