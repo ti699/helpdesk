@@ -1,25 +1,17 @@
-import React from 'react';
-import { supabase } from '../lib/supabase';
+import { updateTicketStatus, TicketStatus } from '@/lib/ticketActions';
 
 type Ticket = {
 	id: string | number;
-	status: string;
+	status: TicketStatus;
 	// ...other fields...
 };
 
 export default function TicketItem({ ticket, onUpdated }: { ticket: Ticket; onUpdated?: () => void }) {
 	// ...existing code...
 
-	async function changeStatus(newStatus: string) {
+	async function changeStatus(newStatus: TicketStatus) {
 		try {
-			const { data, error } = await supabase
-				.from('tickets')
-				.update({ status: newStatus })
-				.eq('id', ticket.id)
-				.select()
-				.single();
-
-			if (error) throw error;
+			await updateTicketStatus(String(ticket.id), newStatus);
 			if (onUpdated) onUpdated();
 		} catch (err) {
 			console.error('Erro ao alterar status do ticket', err);
@@ -30,10 +22,12 @@ export default function TicketItem({ ticket, onUpdated }: { ticket: Ticket; onUp
 		// ...existing code...
 		<div>
 			{/* ...existing code... */}
-			<select value={ticket.status} onChange={e => changeStatus(e.target.value)}>
-				<option value="open">Open</option>
-				<option value="in_progress">In Progress</option>
-				<option value="closed">Closed</option>
+			<select value={ticket.status} onChange={e => changeStatus(e.target.value as TicketStatus)}>
+				<option value="aberto">Aberto</option>
+				<option value="em_andamento">Em andamento</option>
+				<option value="aguardando_resposta">Aguardando resposta</option>
+				<option value="resolvido">Resolvido</option>
+				<option value="fechado">Fechado</option>
 			</select>
 		</div>
 		// ...existing code...

@@ -33,6 +33,7 @@ import { z } from 'zod';
 import { TicketTypeSelect } from '@/components/tickets/TicketTypeSelect';
 import { CategorySelect } from '@/components/tickets/CategorySelect';
 import { Checkbox } from '@/components/ui/checkbox';
+import { createTicket } from '@/lib/ticketActions';
 
 const ticketSchema = z.object({
   titulo: z.string().min(5, 'Título deve ter no mínimo 5 caracteres').max(100, 'Título deve ter no máximo 100 caracteres'),
@@ -46,7 +47,7 @@ interface Attachment {
 }
 
 export default function NovoTicket() {
-  const { user, profile, role } = useAuth();
+  const { user, role } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   
@@ -199,29 +200,15 @@ export default function NovoTicket() {
       return;
     }
 
-    // Validate solicitante email if creating for another user
-    let solicitanteId = user.id;
-    let solicitanteProfile = profile;
-    
-    if (createForOther && solicitanteEmail) {
-      // Find user by email
-      const { data: foundProfile, error: profileError } = await supabase
-        .from('profiles')
-        .select('id, nome, email, telefone, num_anydesk')
-        .eq('email', solicitanteEmail.toLowerCase().trim())
-        .maybeSingle();
-      
-      if (profileError || !foundProfile) {
-        toast({
-          title: 'Usuário não encontrado',
-          description: `Não foi possível encontrar um usuário com o email "${solicitanteEmail}". A pessoa precisa ter uma conta no sistema.`,
-          variant: 'destructive',
-        });
-        return;
-      }
-      
-      solicitanteId = foundProfile.id;
-      solicitanteProfile = foundProfile as typeof profile;
+    const targetRequesterEmail = createForOther ? solicitanteEmail.toLowerCase().trim() : undefined;
+
+    if (createForOther && !targetRequesterEmail) {
+      toast({
+        title: 'Email obrigatório',
+        description: 'Informe o email do solicitante para criar o ticket para outra pessoa.',
+        variant: 'destructive',
+      });
+      return;
     }
 
     setIsSubmitting(true);
@@ -235,7 +222,7 @@ export default function NovoTicket() {
       for (const attachment of attachments) {
         const timestamp = Date.now();
         const sanitizedName = sanitizeFileName(attachment.file.name);
-        const path = `${solicitanteId}/${timestamp}-${sanitizedName}`;
+        const path = `${user.id}/${timestamp}-${sanitizedName}`;
         const storagePath = await uploadFile(attachment.file, path);
 
         if (attachment.type === 'image') {
@@ -247,88 +234,30 @@ export default function NovoTicket() {
 
       if (audioBlob) {
         const timestamp = Date.now();
-        const path = `${solicitanteId}/${timestamp}-audio.webm`;
+        const path = `${user.id}/${timestamp}-audio.webm`;
         audioPath = await uploadFile(audioBlob, path);
       }
 
-      // Create ticket with storage paths (not public URLs)
-      const { data, error } = await supabase
-        .from('tickets')
-        .insert({
-          solicitante_id: solicitanteId,
-          created_by_id: user.id,
-          titulo,
-          descricao,
-          tipo,
-          categoria,
-          setor: solicitanteProfile?.setor || null,
-          prioridade,
-          anexos: {
-            imagens: uploadedImages,
-            arquivos: uploadedFiles,
-            audio: audioPath,
-          },
-        })
-        .select('id, protocolo')
-        .single();
-
-      if (error) throw error;
-
-      // Send confirmation email to requester
-      const recipientEmail = createForOther && solicitanteEmail ? solicitanteEmail : user.email;
-      const recipientName = solicitanteProfile?.nome || recipientEmail;
-      
-      try {
-        await supabase.functions.invoke('send-notification', {
-          body: {
-            type: 'ticket_created',
-            ticket: { id: data.id, protocolo: data.protocolo, titulo },
-            recipient: { email: recipientEmail, name: recipientName },
-          },
-        });
-        console.log('[NovoTicket] Confirmation email sent to requester');
-      } catch (emailError) {
-        console.error('[NovoTicket] Error sending confirmation email:', emailError);
-      }
-
-      // Send alert to the appropriate team based on ticket type
-      const teamEmail = tipo === 'Manutenção predial' 
-        ? 'elton@astroturviagens.com'
-        : 'ti@astroturviagens.com';
-      const teamName = tipo === 'Manutenção predial' ? 'Equipe Manutenção' : 'Equipe TI';
-      
-      try {
-        await supabase.functions.invoke('send-notification', {
-          body: {
-            type: 'new_ticket_alert',
-            ticket: { 
-              id: data.id, 
-              protocolo: data.protocolo, 
-              titulo, 
-              descricao,
-              prioridade,
-              solicitante: solicitanteProfile?.nome || recipientEmail,
-              solicitante_email: recipientEmail,
-              solicitante_telefone: solicitanteProfile?.telefone || 'Não informado',
-              solicitante_anydesk: solicitanteProfile?.num_anydesk || 'Não informado',
-            },
-            recipient: { 
-              email: teamEmail,
-              name: teamName 
-            },
-          },
-        });
-        console.log(`[NovoTicket] Alert sent to ${teamEmail}`);
-      } catch (alertError) {
-        console.error('[NovoTicket] Error sending team alert:', alertError);
-      }
+      const result = await createTicket({
+        titulo,
+        descricao,
+        tipo,
+        categoria,
+        prioridade,
+        solicitanteEmail: targetRequesterEmail,
+        anexos: {
+          imagens: uploadedImages,
+          arquivos: uploadedFiles,
+          audio: audioPath,
+        },
+      });
 
       toast({
         title: 'Ticket criado!',
-        description: `Protocolo: ${data.protocolo}`,
+        description: `Protocolo: ${result.ticket.protocolo}`,
       });
 
-      navigate(`/ticket/${data.id}`);
+      navigate(`/ticket/${result.ticket.id}`);
     } catch (error: unknown) {
       console.error('Error creating ticket:', error);
       

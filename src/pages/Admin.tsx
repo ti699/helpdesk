@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ArrowLeft, LogOut, User, Loader2, Users, Mail } from 'lucide-react';
 import { UserManagement } from '@/components/admin/UserManagement';
 import { InvitationManagement } from '@/components/admin/InvitationManagement';
+import { DepartmentEmailManagement } from '@/components/admin/DepartmentEmailManagement';
 
 export default function Admin() {
   const { user, profile, role, loading: authLoading, signOut } = useAuth();
@@ -89,7 +90,7 @@ export default function Admin() {
       {/* Main Content */}
       <main className="container px-3 sm:px-4 py-4 sm:py-6">
         <Tabs defaultValue="usuarios" className="w-full">
-          <TabsList className="mb-4 sm:mb-6 grid w-full max-w-md grid-cols-2">
+          <TabsList className="mb-4 sm:mb-6 grid w-full max-w-xl grid-cols-3">
             <TabsTrigger value="usuarios" className="flex items-center gap-2 text-xs sm:text-sm">
               <Users className="h-4 w-4" />
               <span className="hidden xs:inline">Usuários</span>
@@ -100,6 +101,10 @@ export default function Admin() {
               <span className="hidden xs:inline">Convites</span>
               <span className="xs:hidden">Convite</span>
             </TabsTrigger>
+            <TabsTrigger value="emails" className="flex items-center gap-2 text-xs sm:text-sm">
+              <Mail className="h-4 w-4" />
+              <span>E-mails</span>
+            </TabsTrigger>
           </TabsList>
           
           <TabsContent value="usuarios">
@@ -108,6 +113,10 @@ export default function Admin() {
           
           <TabsContent value="convites">
             <InvitationManagement />
+          </TabsContent>
+
+          <TabsContent value="emails">
+            <DepartmentEmailManagement />
           </TabsContent>
         </Tabs>
       </main>

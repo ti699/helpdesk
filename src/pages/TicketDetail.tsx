@@ -4,17 +4,19 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { 
   ArrowLeft, 
   Send, 
-  Image as ImageIcon, 
   FileText, 
   Play,
   Pause,
@@ -26,8 +28,12 @@ import {
   Star,
   FileDown
 } from 'lucide-react';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { getSignedUrl, getSignedUrls } from '@/lib/storage';
+import { addTicketMessage } from '@/lib/ticketActions';
 
 
 
@@ -54,11 +60,13 @@ interface TicketData {
   solicitante: {
     id: string;
     nome: string;
+    email: string;
     foto_perfil: string | null;
   } | null;
   agente: {
     id: string;
     nome: string;
+    email: string;
     foto_perfil: string | null;
   } | null;
 }
@@ -91,7 +99,7 @@ const statusConfig: Record<TicketStatus, { label: string; color: string; icon: R
 
 export default function TicketDetail() {
   const { id } = useParams<{ id: string }>();
-  const { user, role } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   
@@ -106,6 +114,7 @@ export default function TicketDetail() {
   const [feedbackComment, setFeedbackComment] = useState('');
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const [hasFeedback, setHasFeedback] = useState(false);
+  const [exportingPDF, setExportingPDF] = useState(false);
   const [signedUrls, setSignedUrls] = useState<SignedUrls>({ imagens: [], arquivos: [], audio: null });
   
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -208,7 +217,7 @@ export default function TicketDetail() {
       if (ticketData.solicitante_id) {
         const { data: solicitanteData } = await supabase
           .from('profiles')
-          .select('id, nome, foto_perfil')
+          .select('id, nome, email, foto_perfil')
           .eq('id', ticketData.solicitante_id)
           .maybeSingle();
         solicitante = solicitanteData;
@@ -217,7 +226,7 @@ export default function TicketDetail() {
       if (ticketData.agente_id) {
         const { data: agenteData } = await supabase
           .from('profiles')
-          .select('id, nome, foto_perfil')
+          .select('id, nome, email, foto_perfil')
           .eq('id', ticketData.agente_id)
           .maybeSingle();
         agente = agenteData;
@@ -299,18 +308,13 @@ export default function TicketDetail() {
   };
 
   const sendMessage = async () => {
-    if (!newMessage.trim() || !user || !id) return;
+    if (!newMessage.trim() || !user || !id || !ticket) return;
 
     setSending(true);
     try {
-      const { error } = await supabase.from('interactions').insert({
-        ticket_id: id,
-        autor_id: user.id,
-        mensagem: newMessage.trim(),
-        tipo: 'texto',
-      });
+      const messageToSend = newMessage.trim();
 
-      if (error) throw error;
+      await addTicketMessage(id, messageToSend);
       setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
@@ -364,6 +368,59 @@ export default function TicketDetail() {
       });
     } finally {
       setSubmittingFeedback(false);
+    }
+  };
+
+  const handleExportPDF = () => {
+    if (!ticket) return;
+
+    setExportingPDF(true);
+    try {
+      const doc = new jsPDF();
+      const createdAt = format(new Date(ticket.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
+
+      doc.setFontSize(16);
+      doc.text(`Ticket ${ticket.protocolo}`, 14, 18);
+
+      doc.setFontSize(11);
+      doc.text(`Título: ${ticket.titulo}`, 14, 30);
+      doc.text(`Status: ${statusConfig[ticket.status].label}`, 14, 38);
+      doc.text(`Prioridade: ${ticket.prioridade}`, 14, 46);
+      doc.text(`Aberto em: ${createdAt}`, 14, 54);
+      doc.text(`Solicitante: ${ticket.solicitante?.nome || 'Não informado'}`, 14, 62);
+
+      const descriptionLines = doc.splitTextToSize(ticket.descricao || '', 180);
+      doc.text('Descrição:', 14, 76);
+      doc.text(descriptionLines, 14, 84);
+
+      autoTable(doc, {
+        startY: Math.min(120, 90 + descriptionLines.length * 6),
+        head: [['Data', 'Autor', 'Tipo', 'Mensagem']],
+        body: interactions.map((interaction) => [
+          format(new Date(interaction.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR }),
+          interaction.autor?.nome || 'Usuário',
+          interaction.tipo,
+          interaction.mensagem || '',
+        ]),
+        styles: { fontSize: 8, cellWidth: 'wrap' },
+        columnStyles: {
+          0: { cellWidth: 32 },
+          1: { cellWidth: 35 },
+          2: { cellWidth: 30 },
+          3: { cellWidth: 88 },
+        },
+      });
+
+      doc.save(`ticket-${ticket.protocolo}.pdf`);
+    } catch (error) {
+      console.error('Error exporting ticket PDF:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível exportar o PDF',
+        variant: 'destructive',
+      });
+    } finally {
+      setExportingPDF(false);
     }
   };
 

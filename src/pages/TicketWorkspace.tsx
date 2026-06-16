@@ -29,6 +29,7 @@ import {
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { getSignedUrl, getSignedUrls } from '@/lib/storage';
+import { addTicketMessage, updateTicketStatus } from '@/lib/ticketActions';
 
 type TicketStatus = 'aberto' | 'em_andamento' | 'aguardando_resposta' | 'resolvido' | 'fechado';
 type TicketPriority = 'baixa' | 'media' | 'alta' | 'critica';
@@ -56,6 +57,7 @@ interface TicketData {
   descricao: string;
   status: TicketStatus;
   prioridade: TicketPriority;
+  tipo: string | null;
   setor: string | null;
   anexos: {
     imagens: string[];
@@ -90,7 +92,7 @@ interface Interaction {
 
 export default function TicketWorkspace() {
   const { id } = useParams<{ id: string }>();
-  const { user, role } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   
@@ -181,18 +183,11 @@ export default function TicketWorkspace() {
   const updateStatus = async (newStatus: TicketStatus) => {
     setUpdatingStatus(true);
     try {
-      const { error } = await supabase.from('tickets').update({ status: newStatus }).eq('id', id);
-      if (error) throw error;
+      if (!id) return;
+
+      await updateTicketStatus(id, newStatus);
       
       setTicket(prev => prev ? { ...prev, status: newStatus } : null);
-      
-      // Adiciona mensagem no chat
-      await supabase.from('interactions').insert({
-        ticket_id: id,
-        autor_id: user?.id,
-        mensagem: `Status alterado para: ${statusConfig[newStatus].label}`,
-        tipo: 'mudanca_status'
-      });
       fetchInteractions();
       toast({ title: 'Status atualizado!' });
     } catch (error: any) {
@@ -217,15 +212,13 @@ export default function TicketWorkspace() {
   };
 
   const sendMessage = async () => {
-    if (!newMessage.trim()) return;
+    if (!newMessage.trim() || !ticket) return;
     setSending(true);
     try {
-      await supabase.from('interactions').insert({
-        ticket_id: id,
-        autor_id: user?.id,
-        mensagem: newMessage.trim(),
-        tipo: 'texto'
-      });
+      const messageToSend = newMessage.trim();
+
+      await addTicketMessage(id!, messageToSend);
+
       setNewMessage('');
       fetchInteractions();
     } catch (error) {
