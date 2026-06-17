@@ -33,6 +33,7 @@ import { TicketFilters } from '@/components/tickets/TicketFilters';
 import { BulkActions } from '@/components/tickets/BulkActions';
 
 type TicketStatus = 'aberto' | 'em_andamento' | 'aguardando_resposta' | 'resolvido' | 'fechado';
+type TicketStatsQuery = ReturnType<ReturnType<typeof supabase.from>['select']>;
 
 interface TicketData {
   id: string;
@@ -44,6 +45,7 @@ interface TicketData {
   tipo: string | null;
   categoria: string | null;
   created_at: string;
+  resolved_at: string | null;
   solicitante: {
     id: string;
     nome: string;
@@ -64,6 +66,57 @@ const priorityColors: Record<string, string> = {
   media: 'bg-priority-medium text-white',
   alta: 'bg-priority-high text-white',
   critica: 'bg-priority-critical text-white',
+};
+
+const unresolvedStatuses: TicketStatus[] = ['aberto', 'em_andamento', 'aguardando_resposta'];
+
+const getDurationMs = (start?: string | null, end?: string | null) => {
+  if (!start) return null;
+
+  const startTime = new Date(start).getTime();
+  const endTime = end ? new Date(end).getTime() : Date.now();
+
+  if (Number.isNaN(startTime) || Number.isNaN(endTime) || endTime < startTime) {
+    return null;
+  }
+
+  return endTime - startTime;
+};
+
+const formatDuration = (durationMs: number | null) => {
+  if (durationMs === null) return 'Sem dados';
+
+  const totalMinutes = Math.max(1, Math.floor(durationMs / 60000));
+  const totalHours = Math.floor(totalMinutes / 60);
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+
+  if (totalHours < 1) return `${totalMinutes}min`;
+  if (days < 1) return `${totalHours}h`;
+  return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+};
+
+const getResolutionMetricLabel = (ticket: Pick<TicketData, 'status' | 'created_at' | 'resolved_at'>) => {
+  if (unresolvedStatuses.includes(ticket.status)) {
+    return `Sem resolução há ${formatDuration(getDurationMs(ticket.created_at))}`;
+  }
+
+  if (ticket.resolved_at) {
+    return `Resolvido em ${formatDuration(getDurationMs(ticket.created_at, ticket.resolved_at))}`;
+  }
+
+  return 'Sem dados';
+};
+
+const getUnresolvedBadgeClass = (ticket: Pick<TicketData, 'tipo' | 'created_at'>) => {
+  const durationMs = getDurationMs(ticket.created_at) || 0;
+  const hours = durationMs / 3600000;
+  const warningAfter = ticket.tipo === 'Manutenção predial' ? 72 : 24;
+  const criticalAfter = ticket.tipo === 'Manutenção predial' ? 96 : 48;
+
+  if (hours >= criticalAfter) return 'border-red-500 bg-red-500 text-white';
+  if (hours >= warningAfter) return 'border-amber-500 bg-amber-500 text-white';
+  return 'border-emerald-600 bg-emerald-600 text-white';
 };
 
 export default function Dashboard() {
@@ -99,7 +152,7 @@ export default function Dashboard() {
       const now = new Date();
       const dataHora = now.toLocaleString('pt-BR');
       doc.text(`Gerado em: ${dataHora}`, 14, 22);
-      let filtrosResumo = [];
+      const filtrosResumo = [];
       if (statusFilter.length > 0) filtrosResumo.push(`Status: ${statusFilter.join(', ')}`);
       if (tipoFilter !== 'all') filtrosResumo.push(`Tipo: ${tipoFilter}`);
       if (periodoInicio || periodoFim) {
@@ -117,6 +170,7 @@ export default function Dashboard() {
           'ID',
           'Título',
           'Status',
+          'Tempo',
           'Tipo',
           'Setor',
           'Data de Abertura',
@@ -126,6 +180,7 @@ export default function Dashboard() {
           t.protocolo || t.id,
           t.titulo,
           t.status,
+          getResolutionMetricLabel(t),
           t.tipo || '',
           t.categoria || '',
           t.created_at ? new Date(t.created_at).toLocaleDateString('pt-BR') : '',
@@ -159,6 +214,8 @@ export default function Dashboard() {
     emAtendimento: 0,
     resolvidos: 0,
     satisfacaoMedia: 0,
+    mediaResolucaoTi: null as number | null,
+    mediaResolucaoManutencao: null as number | null,
   });
 
   // Determine team type based on role
@@ -204,6 +261,7 @@ export default function Dashboard() {
           tipo,
           categoria,
           created_at,
+          resolved_at,
           solicitante_id
         `)
         .order('created_at', { ascending: false });
@@ -239,7 +297,7 @@ export default function Dashboard() {
       // Fetch solicitante profiles separately
       const solicitanteIds = [...new Set(ticketsData?.map(t => t.solicitante_id).filter(Boolean))];
       
-      let profilesMap: Record<string, { id: string; nome: string; foto_perfil: string | null }> = {};
+      const profilesMap: Record<string, { id: string; nome: string; foto_perfil: string | null }> = {};
       
       if (solicitanteIds.length > 0) {
         const { data: profilesData } = await supabase
@@ -273,7 +331,7 @@ export default function Dashboard() {
 
       // Helper to apply current filters to a base query.
       // Adiciona parâmetro ignoreStatusFilter para ignorar o filtro de status dos cards de estatísticas
-      const applyFilters = (baseQuery: any, overrideStatusList?: string[], useUpdatedAtForPeriod = false, ignoreStatusFilter = false) => {
+      const applyFilters = (baseQuery: TicketStatsQuery, overrideStatusList?: string[], useUpdatedAtForPeriod = false, ignoreStatusFilter = false) => {
         // team/type scoping
         if (teamType) {
           baseQuery = baseQuery.eq('tipo', teamType);
@@ -348,11 +406,55 @@ export default function Dashboard() {
         ? feedbacks.reduce((acc, f) => acc + (f.nota_satisfacao || 0), 0) / feedbacks.length
         : 0;
 
+      const fetchAverageResolution = async (ticketType: 'TI' | 'Manutenção predial') => {
+        if (teamType && teamType !== ticketType) return null;
+        if (!teamType && tipoFilter !== 'all' && tipoFilter !== ticketType) return null;
+
+        let resolutionQuery = supabase
+          .from('tickets')
+          .select('created_at, resolved_at')
+          .eq('tipo', ticketType)
+          .in('status', ['resolvido', 'fechado'])
+          .not('resolved_at', 'is', null);
+
+        if (setorFilter && setorFilter !== 'all') {
+          resolutionQuery = resolutionQuery.eq('setor', setorFilter);
+        }
+
+        if (periodoInicio) {
+          resolutionQuery = resolutionQuery.gte('resolved_at', periodoInicio);
+        } else {
+          resolutionQuery = resolutionQuery.gte('resolved_at', firstDayOfMonth.toISOString());
+        }
+
+        if (periodoFim) {
+          resolutionQuery = resolutionQuery.lte('resolved_at', periodoFim + 'T23:59:59');
+        }
+
+        const { data, error } = await resolutionQuery.limit(1000);
+        if (error || !data?.length) return null;
+
+        const durations = data
+          .map((ticket) => getDurationMs(ticket.created_at, ticket.resolved_at))
+          .filter((duration): duration is number => duration !== null);
+
+        if (!durations.length) return null;
+
+        return durations.reduce((sum, duration) => sum + duration, 0) / durations.length;
+      };
+
+      const [mediaResolucaoTi, mediaResolucaoManutencao] = await Promise.all([
+        fetchAverageResolution('TI'),
+        fetchAverageResolution('Manutenção predial'),
+      ]);
+
       setStats({
         novosHoje: novosHoje || 0,
         emAtendimento: emAtendimento || 0,
         resolvidos: resolvidos || 0,
         satisfacaoMedia: Math.round(satisfacaoMedia * 10) / 10,
+        mediaResolucaoTi,
+        mediaResolucaoManutencao,
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -483,7 +585,7 @@ export default function Dashboard() {
       {/* Main Content */}
       <main className="container px-3 sm:px-4 py-4 sm:py-6">
         {/* Stats Cards */}
-        <div className="mb-4 sm:mb-6 grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
+        <div className="mb-4 sm:mb-6 grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-6">
           <Card className="border-l-4 border-l-status-open">
             <CardHeader className="flex flex-row items-center justify-between pb-2 px-3 sm:px-6 pt-3 sm:pt-4">
               <CardDescription className="text-xs sm:text-sm">Abertos</CardDescription>
@@ -523,6 +625,34 @@ export default function Dashboard() {
               </div>
             </CardContent>
           </Card>
+          {(role === 'agente_ti' || role === 'admin') && (
+            <Card className="border-l-4 border-l-blue-500">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 px-3 sm:px-6 pt-3 sm:pt-4">
+                <CardDescription className="text-xs sm:text-sm">
+                  {role === 'admin' ? 'Média TI' : 'Média Resolução'}
+                </CardDescription>
+                <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              </CardHeader>
+              <CardContent className="px-3 sm:px-6">
+                <div className="text-xl sm:text-3xl font-bold">{formatDuration(stats.mediaResolucaoTi)}</div>
+                <p className="mt-1 text-xs text-muted-foreground">resolução</p>
+              </CardContent>
+            </Card>
+          )}
+          {(role === 'agente_manutencao' || role === 'admin') && (
+            <Card className="border-l-4 border-l-emerald-500">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 px-3 sm:px-6 pt-3 sm:pt-4">
+                <CardDescription className="text-xs sm:text-sm">
+                  {role === 'admin' ? 'Média Manutenção' : 'Média Resolução'}
+                </CardDescription>
+                <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              </CardHeader>
+              <CardContent className="px-3 sm:px-6">
+                <div className="text-xl sm:text-3xl font-bold">{formatDuration(stats.mediaResolucaoManutencao)}</div>
+                <p className="mt-1 text-xs text-muted-foreground">resolução</p>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Tickets List */}
@@ -629,6 +759,11 @@ export default function Dashboard() {
                               ) : (
                                 <><Monitor className="mr-1 h-3 w-3" />{ticket.tipo}</>
                               )}
+                            </Badge>
+                          )}
+                          {unresolvedStatuses.includes(ticket.status) && (
+                            <Badge className={`${getUnresolvedBadgeClass(ticket)} text-xs flex-shrink-0`}>
+                              {getResolutionMetricLabel(ticket)}
                             </Badge>
                           )}
                         </div>

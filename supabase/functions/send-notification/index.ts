@@ -7,6 +7,7 @@ import {
 } from "../_shared/ticket-email-templates.ts";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
+const emailFrom = Deno.env.get("EMAIL_FROM") || "Help Desk Astrotur <onboarding@resend.dev>";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,7 +56,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     const { subject, html } = getEmailTemplate(type, ticket, recipient.name);
     const emailResponse = await resend.emails.send({
-      from: "Help Desk Astrotur <onboarding@resend.dev>",
+      from: emailFrom,
       to: [recipient.email.trim().toLowerCase()],
       subject,
       html,

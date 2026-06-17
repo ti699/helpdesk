@@ -39,6 +39,7 @@ interface TicketRecord {
   setor: string | null;
   solicitante_id: string;
   agente_id: string | null;
+  resolved_at: string | null;
 }
 
 interface Recipient {
@@ -58,6 +59,7 @@ class HttpError extends Error {
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const emailFrom = Deno.env.get("EMAIL_FROM") || "Help Desk Astrotur <onboarding@resend.dev>";
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
 const admin = createClient(supabaseUrl, supabaseServiceRoleKey);
@@ -135,7 +137,7 @@ const getProfileByEmail = async (email: string) => {
 const getTicket = async (ticketId: string) => {
   const { data, error } = await admin
     .from("tickets")
-    .select("id, protocolo, titulo, descricao, status, prioridade, tipo, setor, solicitante_id, agente_id")
+    .select("id, protocolo, titulo, descricao, status, prioridade, tipo, setor, solicitante_id, agente_id, resolved_at")
     .eq("id", ticketId)
     .single();
 
@@ -256,7 +258,7 @@ const sendEmails = async (
       try {
         const { subject, html } = getEmailTemplate(eventType, ticket, recipient.name);
         const result = await resend.emails.send({
-          from: "Help Desk Astrotur <onboarding@resend.dev>",
+          from: emailFrom,
           to: [recipient.email],
           subject,
           html,
@@ -328,7 +330,7 @@ const handleCreateTicket = async (
       prioridade: (payload.prioridade || "media") as TicketPriority,
       anexos: payload.anexos || { imagens: [], arquivos: [], audio: null },
     })
-    .select("id, protocolo, titulo, descricao, status, prioridade, tipo, setor, solicitante_id, agente_id")
+    .select("id, protocolo, titulo, descricao, status, prioridade, tipo, setor, solicitante_id, agente_id, resolved_at")
     .single();
 
   if (error || !data) {
@@ -421,16 +423,28 @@ const handleUpdateStatus = async (
     return { ok: true, unchanged: true };
   }
 
-  const updatePayload = {
+  const nowIso = new Date().toISOString();
+  const updatePayload: {
+    status: TicketStatus;
+    closed_at: string | null;
+    resolved_at: string | null;
+  } = {
     status: newStatus,
-    closed_at: newStatus === "fechado" ? new Date().toISOString() : null,
+    closed_at: newStatus === "fechado" ? nowIso : null,
+    resolved_at: null,
   };
+
+  if (newStatus === "resolvido") {
+    updatePayload.resolved_at = nowIso;
+  } else if (newStatus === "fechado") {
+    updatePayload.resolved_at = currentTicket.resolved_at || nowIso;
+  }
 
   const { data, error } = await admin
     .from("tickets")
     .update(updatePayload)
     .eq("id", ticketId)
-    .select("id, protocolo, titulo, descricao, status, prioridade, tipo, setor, solicitante_id, agente_id")
+    .select("id, protocolo, titulo, descricao, status, prioridade, tipo, setor, solicitante_id, agente_id, resolved_at")
     .single();
 
   if (error || !data) {
