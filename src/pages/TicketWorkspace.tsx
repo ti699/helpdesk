@@ -13,6 +13,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { useToast } from '@/hooks/use-toast';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { AccountMenu } from '@/components/AccountMenu';
 import { 
   ArrowLeft, 
   Send, 
@@ -283,6 +284,7 @@ export default function TicketWorkspace() {
             </Sheet>
             <ThemeToggle />
             <NotificationBell />
+            <AccountMenu />
           </div>
         </div>
       </header>

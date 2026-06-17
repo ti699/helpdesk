@@ -11,6 +11,7 @@ import Auth from "./pages/Auth";
 import NovoTicket from "./pages/NovoTicket";
 import TicketDetail from "./pages/TicketDetail";
 import Dashboard from "./pages/Dashboard";
+import ExecutiveDashboard from "./pages/ExecutiveDashboard";
 import TicketWorkspace from "./pages/TicketWorkspace";
 import Admin from "./pages/Admin";
 import ResetPassword from "./pages/ResetPassword";
@@ -58,6 +59,14 @@ const App = () => (
                 element={
                   <ProtectedRoute allowedRoles={['agente_ti', 'agente_manutencao', 'admin']}>
                     <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/gestao"
+                element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <ExecutiveDashboard />
                   </ProtectedRoute>
                 }
               />

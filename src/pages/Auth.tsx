@@ -219,10 +219,10 @@ export default function Auth() {
       } else {
         toast({
           title: 'Email enviado!',
-          description: 'Você receberá um código para redefinir sua senha.',
+          description: 'Abra o link recebido para definir uma nova senha.',
         });
-        // Redirecionar para a página de reset com o email
-        navigate(`/reset-password?email=${encodeURIComponent(resetEmail)}`);
+        setShowForgotPassword(false);
+        setResetEmail('');
       }
     } catch (err) {
       toast({

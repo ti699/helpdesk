@@ -2,16 +2,16 @@ import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, LogOut, User, Loader2, Users, Mail } from 'lucide-react';
+import { AccountMenu } from '@/components/AccountMenu';
+import { ArrowLeft, BarChart3, Loader2, Users, Mail } from 'lucide-react';
 import { UserManagement } from '@/components/admin/UserManagement';
 import { InvitationManagement } from '@/components/admin/InvitationManagement';
 import { DepartmentEmailManagement } from '@/components/admin/DepartmentEmailManagement';
 
 export default function Admin() {
-  const { user, profile, role, loading: authLoading, signOut } = useAuth();
+  const { user, role, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -25,11 +25,6 @@ export default function Admin() {
       navigate('/dashboard');
     }
   }, [role, authLoading, navigate]);
-
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/auth');
-  };
 
   if (authLoading) {
     return (
@@ -69,20 +64,16 @@ export default function Admin() {
             <Badge variant="outline" className="hidden sm:flex bg-primary/10 text-primary border-primary/20 text-xs">
               Administrador
             </Badge>
-            <div className="flex items-center gap-1 sm:gap-2">
-              <Avatar className="h-7 sm:h-8 w-7 sm:w-8 flex-shrink-0">
-                <AvatarImage src={profile?.foto_perfil || undefined} />
-                <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                  {profile?.nome?.charAt(0).toUpperCase() || <User className="h-4 w-4" />}
-                </AvatarFallback>
-              </Avatar>
-              <div className="hidden md:block min-w-0">
-                <p className="text-xs sm:text-sm font-medium truncate">{profile?.nome || 'Admin'}</p>
-              </div>
-            </div>
-            <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10" onClick={handleSignOut}>
-              <LogOut className="h-4 w-4" />
-            </Button>
+            <Link to="/gestao">
+              <Button variant="outline" size="sm" className="hidden sm:flex h-8">
+                <BarChart3 className="mr-2 h-4 w-4" />
+                Alta Gestão
+              </Button>
+              <Button variant="outline" size="icon" className="sm:hidden h-8 w-8">
+                <BarChart3 className="h-4 w-4" />
+              </Button>
+            </Link>
+            <AccountMenu />
           </div>
         </div>
       </header>

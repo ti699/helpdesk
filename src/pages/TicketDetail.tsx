@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useToast } from '@/hooks/use-toast';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { AccountMenu } from '@/components/AccountMenu';
 import { 
   ArrowLeft, 
   Send, 
@@ -269,7 +270,7 @@ export default function TicketDetail() {
       // Fetch author profiles separately
       const autorIds = [...new Set(interactionsData?.map(i => i.autor_id).filter(Boolean))];
       
-      let profilesMap: Record<string, { id: string; nome: string; foto_perfil: string | null }> = {};
+      const profilesMap: Record<string, { id: string; nome: string; foto_perfil: string | null }> = {};
       
       if (autorIds.length > 0) {
         const { data: profilesData } = await supabase
@@ -501,11 +502,13 @@ export default function TicketDetail() {
             <ThemeToggle />
             <NotificationBell />
             {canEvaluate && (
-              <Button onClick={() => setShowFeedback(true)} variant="outline" size="sm" className="text-xs sm:text-sm">
-                <Star className="mr-1 sm:mr-2 h-3 sm:h-4 w-3 sm:w-4" />
-                <span className="hidden xs:inline">Avaliar</span>
+              <Button onClick={() => setShowFeedback(true)} size="sm" className="text-xs sm:text-sm">
+                <Star className="mr-1 sm:mr-2 h-4 w-4 fill-yellow-300 text-yellow-300" />
+                <span className="hidden xs:inline">Avalie este atendimento</span>
+                <span className="xs:hidden">Avaliar</span>
               </Button>
             )}
+            <AccountMenu />
           </div>
         </div>
       </header>
@@ -666,35 +669,41 @@ export default function TicketDetail() {
 
       {/* Feedback Dialog */}
       <Dialog open={showFeedback} onOpenChange={setShowFeedback}>
-        <DialogContent className="w-[95vw] max-w-md">
+        <DialogContent className="w-[95vw] max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-lg">Avaliar Atendimento</DialogTitle>
-            <DialogDescription className="text-xs sm:text-sm">
-              Como foi sua experiência com este atendimento?
+            <DialogTitle className="text-xl">Avalie este atendimento</DialogTitle>
+            <DialogDescription className="text-sm">
+              Sua avaliação ajuda a melhorar o suporte para todos os setores.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 sm:space-y-4 py-3 sm:py-4">
-            <div className="space-y-2">
-              <Label className="text-xs sm:text-sm">Nota de satisfação</Label>
-              <div className="flex gap-1">
+          <div className="space-y-5 py-3 sm:py-4">
+            <div className="rounded-lg border bg-yellow-50 p-4 text-center dark:bg-yellow-950/20">
+              <Label className="text-sm font-semibold text-foreground">Nota de satisfação</Label>
+              <div className="mt-3 flex justify-center gap-2">
                 {[1, 2, 3, 4, 5].map((star) => (
                   <Button
                     key={star}
                     variant="ghost"
                     size="icon"
-                    className="h-9 w-9 sm:h-10 sm:w-10"
+                    className="h-12 w-12 rounded-full hover:bg-yellow-100 focus-visible:ring-yellow-500 dark:hover:bg-yellow-900/40 sm:h-14 sm:w-14"
                     onClick={() => setFeedbackRating(star)}
+                    title={`${star} estrela${star > 1 ? 's' : ''}`}
                   >
                     <Star
-                      className={`h-5 sm:h-6 w-5 sm:w-6 ${
+                      className={`h-8 w-8 transition-all sm:h-9 sm:w-9 ${
                         star <= feedbackRating
-                          ? 'fill-yellow-400 text-yellow-400'
-                          : 'text-muted-foreground'
+                          ? 'scale-110 fill-yellow-400 text-yellow-500'
+                          : 'fill-yellow-100 text-yellow-500 opacity-80 dark:fill-yellow-950'
                       }`}
                     />
                   </Button>
                 ))}
               </div>
+              <p className="mt-3 min-h-5 text-sm font-medium text-muted-foreground">
+                {feedbackRating > 0
+                  ? `${feedbackRating} de 5 estrela${feedbackRating > 1 ? 's' : ''}`
+                  : 'Selecione uma nota para liberar o envio'}
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="feedback-comment" className="text-xs sm:text-sm">Comentários (opcional)</Label>
@@ -714,7 +723,7 @@ export default function TicketDetail() {
             <Button
               onClick={submitFeedback}
               disabled={feedbackRating === 0 || submittingFeedback}
-              className="text-xs sm:text-sm"
+              className="text-sm"
             >
               {submittingFeedback ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

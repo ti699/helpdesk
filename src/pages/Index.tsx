@@ -11,13 +11,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { AccountMenu } from '@/components/AccountMenu';
 import { 
   Plus, 
   Ticket, 
   Clock, 
   CheckCircle2, 
   AlertCircle,
-  LogOut,
   User,
   Loader2,
   Monitor,
@@ -213,7 +213,7 @@ export default function Index() {
       const now = new Date();
       const dataHora = now.toLocaleString('pt-BR');
       doc.text(`Gerado em: ${dataHora}`, 14, 22);
-      let filtrosResumo = [];
+      const filtrosResumo = [];
       if (statusFilter.length > 0) filtrosResumo.push(`Status: ${statusFilter.join(', ')}`);
       if (tipoFilter !== 'all') filtrosResumo.push(`Tipo: ${tipoFilter}`);
       if (periodoInicio || periodoFim) {
@@ -278,21 +278,7 @@ export default function Index() {
           <div className="flex items-center gap-1 sm:gap-4">
             <ThemeToggle />
             <NotificationBell />
-            <div className="flex items-center gap-1 sm:gap-2">
-              <Avatar className="h-7 sm:h-8 w-7 sm:w-8">
-                <AvatarImage src={profile?.foto_perfil || undefined} />
-                <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                  {profile?.nome?.charAt(0).toUpperCase() || <User className="h-4 w-4" />}
-                </AvatarFallback>
-              </Avatar>
-              <div className="hidden sm:block truncate">
-                <p className="text-xs sm:text-sm font-medium truncate">{profile?.nome || 'Usuário'}</p>
-                <p className="text-xs text-muted-foreground truncate">{profile?.setor || ''}</p>
-              </div>
-            </div>
-            <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10" onClick={handleSignOut}>
-              <LogOut className="h-4 w-4" />
-            </Button>
+            <AccountMenu />
           </div>
         </div>
       </header>

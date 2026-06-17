@@ -13,19 +13,20 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { AccountMenu } from '@/components/AccountMenu';
 import { 
   Ticket, 
   Clock, 
   CheckCircle2, 
   AlertCircle,
-  LogOut,
   User,
   Loader2,
   Star,
   Settings,
   Monitor,
   Wrench,
-  Plus
+  Plus,
+  BarChart3
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -552,32 +553,30 @@ export default function Dashboard() {
               {teamLabel}
             </Badge>
             {role === 'admin' && (
-              <Link to="/admin">
-                <Button variant="outline" size="sm" className="hidden sm:flex h-8">
-                  <Settings className="mr-2 h-4 w-4" />
-                  Admin
-                </Button>
-                <Button variant="outline" size="icon" className="sm:hidden h-8 w-8">
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </Link>
+              <>
+                <Link to="/gestao">
+                  <Button variant="outline" size="sm" className="hidden sm:flex h-8">
+                    <BarChart3 className="mr-2 h-4 w-4" />
+                    Alta Gestão
+                  </Button>
+                  <Button variant="outline" size="icon" className="sm:hidden h-8 w-8">
+                    <BarChart3 className="h-4 w-4" />
+                  </Button>
+                </Link>
+                <Link to="/admin">
+                  <Button variant="outline" size="sm" className="hidden sm:flex h-8">
+                    <Settings className="mr-2 h-4 w-4" />
+                    Admin
+                  </Button>
+                  <Button variant="outline" size="icon" className="sm:hidden h-8 w-8">
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </>
             )}
             <ThemeToggle />
             <NotificationBell />
-            <div className="flex items-center gap-1 sm:gap-2">
-              <Avatar className="h-7 sm:h-8 w-7 sm:w-8 flex-shrink-0">
-                <AvatarImage src={profile?.foto_perfil || undefined} />
-                <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                  {profile?.nome?.charAt(0).toUpperCase() || <User className="h-4 w-4" />}
-                </AvatarFallback>
-              </Avatar>
-              <div className="hidden md:block min-w-0">
-                <p className="text-xs sm:text-sm font-medium truncate">{profile?.nome || 'Agente'}</p>
-              </div>
-            </div>
-            <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10" onClick={handleSignOut}>
-              <LogOut className="h-4 w-4" />
-            </Button>
+            <AccountMenu />
           </div>
         </div>
       </header>
