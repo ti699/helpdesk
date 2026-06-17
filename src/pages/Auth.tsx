@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -72,17 +72,21 @@ export default function Auth() {
   // Removido signInWithGoogle daqui
   const { signIn, signUp, resetPassword, user, role } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
 
   useEffect(() => {
     if (user && role) {
-      if (role === 'solicitante') {
-        navigate('/');
+      const from = (location.state as { from?: { pathname?: string; search?: string } } | null)?.from;
+      if (from?.pathname && from.pathname !== '/reset-password') {
+        navigate(`${from.pathname}${from.search || ''}`, { replace: true });
+      } else if (role === 'solicitante') {
+        navigate('/', { replace: true });
       } else {
-        navigate('/dashboard');
+        navigate('/dashboard', { replace: true });
       }
     }
-  }, [user, role, navigate]);
+  }, [user, role, navigate, location.state]);
 
   const isNetworkError = (error: Error | { message: string }) => {
     const msg = error.message?.toLowerCase() || '';

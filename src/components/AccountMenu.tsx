@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { KeyRound, Loader2, LogOut, User } from 'lucide-react';
+import { BarChart3, KeyRound, Loader2, LogOut, User } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -25,7 +25,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 
 export function AccountMenu() {
-  const { profile, signOut } = useAuth();
+  const { profile, signOut, managementReportAccess } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
@@ -104,6 +104,12 @@ export function AccountMenu() {
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
+          {managementReportAccess && (
+            <DropdownMenuItem onClick={() => navigate('/gestao')}>
+              <BarChart3 className="mr-2 h-4 w-4" />
+              Alta Gestão
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onClick={() => setShowPasswordDialog(true)}>
             <KeyRound className="mr-2 h-4 w-4" />
             Conta / Alterar senha

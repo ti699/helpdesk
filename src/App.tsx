@@ -65,7 +65,7 @@ const App = () => (
               <Route
                 path="/gestao"
                 element={
-                  <ProtectedRoute allowedRoles={['admin']}>
+                  <ProtectedRoute>
                     <ExecutiveDashboard />
                   </ProtectedRoute>
                 }

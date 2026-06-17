@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle, Loader2, Lock, Mail } from 'lucide-react';
 import { z } from 'zod';
 import { useAuth } from '@/contexts/AuthContext';
@@ -21,13 +21,45 @@ const passwordSchema = z.object({
 export default function ResetPassword() {
   const { session, loading, resetPassword } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const [email, setEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [checkingRecoveryLink, setCheckingRecoveryLink] = useState(true);
   const hasRecoverySession = Boolean(session?.user);
+
+  useEffect(() => {
+    const prepareRecoverySession = async () => {
+      const code = searchParams.get('code');
+
+      if (!code) {
+        setCheckingRecoveryLink(false);
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (error) throw error;
+
+        window.history.replaceState({}, document.title, '/reset-password');
+      } catch (error) {
+        toast({
+          title: 'Link inválido ou expirado',
+          description: error instanceof Error ? error.message : 'Solicite um novo link de recuperação.',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoading(false);
+        setCheckingRecoveryLink(false);
+      }
+    };
+
+    prepareRecoverySession();
+  }, [searchParams, toast]);
 
   const handleResetPassword = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -104,7 +136,7 @@ export default function ResetPassword() {
     }
   };
 
-  if (loading) {
+  if (loading || checkingRecoveryLink) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-muted px-4">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

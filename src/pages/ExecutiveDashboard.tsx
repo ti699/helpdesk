@@ -4,7 +4,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ArrowLeft, BarChart3, Clock, Loader2, Star, Ticket, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, BarChart3, Clock, Download, Loader2, Star, Ticket, TriangleAlert } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { AccountMenu } from '@/components/AccountMenu';
@@ -89,7 +91,7 @@ const countBy = (tickets: ManagementTicket[], key: 'categoria' | 'setor') => {
 };
 
 export default function ExecutiveDashboard() {
-  const { user, role, loading: authLoading } = useAuth();
+  const { user, role, managementReportAccess, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [tickets, setTickets] = useState<ManagementTicket[]>([]);
@@ -108,17 +110,19 @@ export default function ExecutiveDashboard() {
     }
   }, [user, authLoading, navigate]);
 
-  useEffect(() => {
-    if (!authLoading && role && role !== 'admin') {
-      navigate('/dashboard');
-    }
-  }, [role, authLoading, navigate]);
+  const hasExecutiveAccess = role === 'admin' || managementReportAccess;
 
   useEffect(() => {
-    if (user && role === 'admin') {
+    if (!authLoading && role && !hasExecutiveAccess) {
+      navigate('/dashboard');
+    }
+  }, [role, hasExecutiveAccess, authLoading, navigate]);
+
+  useEffect(() => {
+    if (user && hasExecutiveAccess) {
       fetchManagementData();
     }
-  }, [user, role, tipoFilter, statusFilter, periodoInicio, periodoFim]);
+  }, [user, hasExecutiveAccess, tipoFilter, statusFilter, periodoInicio, periodoFim]);
 
   const fetchManagementData = async () => {
     setLoading(true);
@@ -201,6 +205,71 @@ export default function ExecutiveDashboard() {
     },
   ];
 
+  const handleExportPDF = () => {
+    const doc = new jsPDF();
+    const generatedAt = format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
+    const areaLabel = tipoFilter === 'all' ? 'Todas' : tipoFilter === 'Manutenção predial' ? 'Manutenção' : tipoFilter;
+    const statusLabel = statusFilter === 'all' ? 'Todos' : statusFilter.replaceAll('_', ' ');
+
+    doc.setFontSize(16);
+    doc.text('Relatório Alta Gestão - Help Desk Astrotur', 14, 18);
+    doc.setFontSize(10);
+    doc.text(`Emitido em ${generatedAt}`, 14, 26);
+    doc.text(`Período: ${format(new Date(periodoInicio), 'dd/MM/yyyy')} até ${format(new Date(periodoFim), 'dd/MM/yyyy')}`, 14, 32);
+    doc.text(`Área: ${areaLabel} | Status: ${statusLabel}`, 14, 38);
+
+    autoTable(doc, {
+      startY: 46,
+      head: [['Indicador', 'Valor']],
+      body: [
+        ['Total de tickets', stats.total],
+        ['Abertos', stats.abertos],
+        ['Em atendimento', stats.emAtendimento],
+        ['Resolvidos', stats.resolvidos],
+        ['Fechados', stats.fechados],
+        ['Sem resolução', stats.semResolucao],
+        ['Atrasados', stats.atrasados],
+        ['Satisfação média', `${stats.satisfacaoMedia || 0}/5`],
+        ['Tempo médio TI', formatDuration(stats.mediaTi)],
+        ['Tempo médio Manutenção', formatDuration(stats.mediaManutencao)],
+      ],
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [211, 47, 47] },
+    });
+
+    autoTable(doc, {
+      startY: (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY
+        ? (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10
+        : 120,
+      head: [['Área', 'Total', 'Atrasados']],
+      body: areaData.map((area) => [area.area, area.total, area.atrasados]),
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [37, 99, 235] },
+    });
+
+    autoTable(doc, {
+      startY: (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10,
+      head: [['Ranking por categoria', 'Quantidade']],
+      body: stats.categorias.length
+        ? stats.categorias.map((row) => [row.label, row.count])
+        : [['Sem dados no período', 0]],
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [51, 65, 85] },
+    });
+
+    autoTable(doc, {
+      startY: (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10,
+      head: [['Ranking por setor solicitante', 'Quantidade']],
+      body: stats.setores.length
+        ? stats.setores.map((row) => [row.label, row.count])
+        : [['Sem dados no período', 0]],
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [51, 65, 85] },
+    });
+
+    doc.save(`relatorio-alta-gestao-${format(new Date(), 'yyyy-MM-dd-HHmm')}.pdf`);
+  };
+
   if (authLoading || loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -209,7 +278,7 @@ export default function ExecutiveDashboard() {
     );
   }
 
-  if (role !== 'admin') return null;
+  if (!hasExecutiveAccess) return null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -234,8 +303,12 @@ export default function ExecutiveDashboard() {
 
           <div className="flex items-center gap-1 sm:gap-3">
             <Badge variant="outline" className="hidden sm:flex bg-primary/10 text-primary border-primary/20">
-              Administrador
+              {role === 'admin' ? 'Administrador' : 'Alta Gestão'}
             </Badge>
+            <Button variant="outline" size="sm" onClick={handleExportPDF} className="hidden sm:flex">
+              <Download className="mr-2 h-4 w-4" />
+              Exportar PDF
+            </Button>
             <ThemeToggle />
             <NotificationBell />
             <AccountMenu />
@@ -246,10 +319,16 @@ export default function ExecutiveDashboard() {
       <main className="container px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <BarChart3 className="h-5 w-5" />
-              Filtros executivos
-            </CardTitle>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <BarChart3 className="h-5 w-5" />
+                Filtros executivos
+              </CardTitle>
+              <Button variant="outline" size="sm" onClick={handleExportPDF} className="sm:hidden">
+                <Download className="mr-2 h-4 w-4" />
+                Exportar PDF
+              </Button>
+            </div>
             <CardDescription>Indicadores calculados pelo período de abertura dos tickets.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

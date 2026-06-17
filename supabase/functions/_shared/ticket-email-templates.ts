@@ -57,6 +57,7 @@ export const getEmailTemplate = (
   recipientName: string,
 ): { subject: string; html: string } => {
   const ticketUrl = `${getAppUrl()}/ticket/${ticket.id}`;
+  const feedbackUrl = `${ticketUrl}?avaliar=1`;
   const safeRecipientName = escapeHtml(recipientName);
   const safeTitle = escapeHtml(ticket.titulo);
   const safeProtocol = escapeHtml(ticket.protocolo);
@@ -250,7 +251,7 @@ export const getEmailTemplate = (
                 <strong>Sua opinião é muito importante!</strong> Por favor, avalie o atendimento para que possamos continuar melhorando nossos serviços.
               </p>
               <div style="text-align: center;">
-                <a href="${ticketUrl}" style="${buttonStyle}">Avaliar Atendimento</a>
+                <a href="${feedbackUrl}" style="${buttonStyle}">Avaliar Atendimento</a>
               </div>
             </div>
             ${footer}

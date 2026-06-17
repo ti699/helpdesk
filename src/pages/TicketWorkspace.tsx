@@ -50,6 +50,21 @@ const priorityConfig: Record<TicketPriority, { label: string; color: string }> =
   critica: { label: 'Crítica', color: 'bg-red-500 text-white' },
 };
 
+const isSameCalendarDay = (left: Date, right: Date) =>
+  left.getFullYear() === right.getFullYear() &&
+  left.getMonth() === right.getMonth() &&
+  left.getDate() === right.getDate();
+
+const getDayLabel = (date: Date) => {
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  if (isSameCalendarDay(date, today)) return 'Hoje';
+  if (isSameCalendarDay(date, yesterday)) return 'Ontem';
+  return format(date, 'dd/MM/yyyy', { locale: ptBR });
+};
+
 // Interface completa
 interface TicketData {
   id: string;
@@ -315,19 +330,51 @@ export default function TicketWorkspace() {
             <CardHeader className="py-3 border-b"><CardTitle className="text-base">Conversa</CardTitle></CardHeader>
             <CardContent className="flex flex-1 flex-col p-0 overflow-hidden">
               <div className="flex-1 p-4 overflow-y-auto space-y-4">
-                {interactions.map(i => (
-                   <div key={i.id} className={`flex ${i.autor_id === user?.id ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[80%] p-3 rounded-lg ${
-                              i.tipo === 'mudanca_status' 
-                              ? 'bg-primary text-primary-foreground text-center w-full'  // <--- MUDAMOS AQUI (Agora é Azul)
-                              : (i.autor_id === user?.id ? 'bg-primary text-primary-foreground' : 'bg-muted')
-                          }`}>
-                         {i.tipo !== 'mudanca_status' && <p className="text-xs font-bold mb-1">{i.autor?.nome}</p>}
-                         <p className="text-sm">{i.mensagem}</p>
-                         <p className="text-[10px] opacity-70 mt-1 text-right">{format(new Date(i.created_at), 'HH:mm')}</p>
-                      </div>
-                   </div>
-                ))}
+                {interactions.map((interaction, index) => {
+                  const interactionDate = new Date(interaction.created_at);
+                  const previousInteraction = interactions[index - 1];
+                  const shouldShowDateSeparator =
+                    !previousInteraction ||
+                    !isSameCalendarDay(interactionDate, new Date(previousInteraction.created_at));
+                  const isOwnMessage = interaction.autor_id === user?.id;
+                  const isStatusEvent = interaction.tipo === 'mudanca_status';
+
+                  return (
+                    <div key={interaction.id} className="space-y-3">
+                      {shouldShowDateSeparator && (
+                        <div className="flex justify-center">
+                          <span className="rounded-full bg-muted px-3 py-1 text-[11px] font-medium text-muted-foreground">
+                            {getDayLabel(interactionDate)}
+                          </span>
+                        </div>
+                      )}
+
+                      {isStatusEvent ? (
+                        <div className="flex justify-center">
+                          <div className="max-w-[92%] rounded-full border bg-background px-3 py-1 text-center text-xs text-muted-foreground shadow-sm">
+                            <span className="font-medium">{interaction.autor?.nome || 'Sistema'}</span>
+                            <span> • {interaction.mensagem}</span>
+                            <span> • {format(interactionDate, 'HH:mm', { locale: ptBR })}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
+                          <div
+                            className={`max-w-[80%] rounded-lg p-3 ${
+                              isOwnMessage ? 'bg-primary text-primary-foreground' : 'bg-muted'
+                            }`}
+                          >
+                            <p className="mb-1 text-xs font-bold opacity-75">{interaction.autor?.nome}</p>
+                            <p className="whitespace-pre-wrap break-words text-sm">{interaction.mensagem}</p>
+                            <p className="mt-1 text-right text-[10px] opacity-70">
+                              {format(interactionDate, 'HH:mm', { locale: ptBR })}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
                 <div ref={chatEndRef} />
               </div>
               {ticket.status !== 'fechado' && (

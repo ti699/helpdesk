@@ -20,6 +20,7 @@ interface AuthContextType {
   session: Session | null;
   profile: Profile | null;
   role: AppRole | null;
+  managementReportAccess: boolean;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, profileData: Partial<Profile>, inviteToken?: string) => Promise<{ error: Error | null }>;
@@ -27,7 +28,6 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: Error | null }>;
-  verifyResetCode: (email: string, code: string, newPassword: string) => Promise<{ error: Error | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -37,6 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
+  const [managementReportAccess, setManagementReportAccess] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string) => {
@@ -57,15 +58,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .eq('user_id', userId)
         .maybeSingle();
 
-      if (roleData) {
-        setRole(roleData.role as AppRole);
-      } else {
+      const assignedRole = (roleData?.role as AppRole | undefined) || 'solicitante';
+
+      if (!roleData) {
         // Fallback: se não tem role no banco, assumir solicitante
         console.warn('User has no role assigned, defaulting to solicitante');
-        setRole('solicitante');
       }
+
+      if (assignedRole === 'admin') {
+        setManagementReportAccess(true);
+      } else {
+        const { data: managementAccessData } = await supabase
+          .from('management_report_access')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        setManagementReportAccess(!!managementAccessData);
+      }
+
+      setRole(assignedRole);
     } catch (error) {
       console.error('Error fetching profile:', error);
+      setManagementReportAccess(false);
     }
   };
 
@@ -82,6 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else {
           setProfile(null);
           setRole(null);
+          setManagementReportAccess(false);
         }
         setLoading(false);
       }
@@ -152,6 +168,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSession(null);
     setProfile(null);
     setRole(null);
+    setManagementReportAccess(false);
   };
 
   const refreshProfile = async () => {
@@ -168,23 +185,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error };
   };
 
-  const verifyResetCode = async (email: string, code: string, newPassword: string) => {
-    // Verify OTP and update password
-    const { error: verifyError } = await supabase.auth.verifyOtp({
-      email,
-      token: code,
-      type: 'recovery',
-    });
-    
-    if (verifyError) {
-      return { error: verifyError };
-    }
-
-    // Now update the password
-    const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
-    return { error: updateError };
-  };
-
   return (
     <AuthContext.Provider
       value={{
@@ -192,6 +192,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         session,
         profile,
         role,
+        managementReportAccess,
         loading,
         signIn,
         signUp,
@@ -199,7 +200,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signOut,
         refreshProfile,
         resetPassword,
-        verifyResetCode,
       }}
     >
       {children}

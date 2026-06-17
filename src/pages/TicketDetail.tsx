@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -98,8 +98,24 @@ const statusConfig: Record<TicketStatus, { label: string; color: string; icon: R
   fechado: { label: 'Fechado', color: 'bg-status-closed text-white', icon: <CheckCircle2 className="h-4 w-4" /> },
 };
 
+const isSameCalendarDay = (left: Date, right: Date) =>
+  left.getFullYear() === right.getFullYear() &&
+  left.getMonth() === right.getMonth() &&
+  left.getDate() === right.getDate();
+
+const getDayLabel = (date: Date) => {
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  if (isSameCalendarDay(date, today)) return 'Hoje';
+  if (isSameCalendarDay(date, yesterday)) return 'Ontem';
+  return format(date, 'dd/MM/yyyy', { locale: ptBR });
+};
+
 export default function TicketDetail() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -115,14 +131,18 @@ export default function TicketDetail() {
   const [feedbackComment, setFeedbackComment] = useState('');
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const [hasFeedback, setHasFeedback] = useState(false);
+  const [feedbackChecked, setFeedbackChecked] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
   const [signedUrls, setSignedUrls] = useState<SignedUrls>({ imagens: [], arquivos: [], audio: null });
   
   const audioRef = useRef<HTMLAudioElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const handledAutoFeedbackRef = useRef(false);
 
   useEffect(() => {
     if (id) {
+      setFeedbackChecked(false);
+      handledAutoFeedbackRef.current = false;
       fetchTicket();
       fetchInteractions();
       checkFeedback();
@@ -149,6 +169,32 @@ export default function TicketDetail() {
     
     fetchSignedUrls();
   }, [ticket]);
+
+  useEffect(() => {
+    if (
+      handledAutoFeedbackRef.current ||
+      !ticket ||
+      !user ||
+      !feedbackChecked ||
+      searchParams.get('avaliar') !== '1'
+    ) {
+      return;
+    }
+
+    handledAutoFeedbackRef.current = true;
+
+    if (ticket.status === 'resolvido' && ticket.solicitante?.id === user.id && !hasFeedback) {
+      setShowFeedback(true);
+      return;
+    }
+
+    toast({
+      title: hasFeedback ? 'Ticket já avaliado' : 'Avaliação indisponível',
+      description: hasFeedback
+        ? 'Este atendimento já recebeu uma avaliação.'
+        : 'A avaliação só fica disponível para o solicitante quando o ticket está resolvido.',
+    });
+  }, [feedbackChecked, hasFeedback, searchParams, ticket, toast, user]);
 
   // Real-time subscription
   useEffect(() => {
@@ -296,6 +342,7 @@ export default function TicketDetail() {
 
   const checkFeedback = async () => {
     try {
+      setFeedbackChecked(false);
       const { data } = await supabase
         .from('feedbacks')
         .select('id')
@@ -305,6 +352,8 @@ export default function TicketDetail() {
       setHasFeedback(!!data);
     } catch (error) {
       console.error('Error checking feedback:', error);
+    } finally {
+      setFeedbackChecked(true);
     }
   };
 
@@ -603,34 +652,58 @@ export default function TicketDetail() {
                   Nenhuma mensagem ainda
                 </p>
               ) : (
-                interactions.map((interaction) => {
+                interactions.map((interaction, index) => {
                   const isOwnMessage = interaction.autor?.id === user?.id;
+                  const interactionDate = new Date(interaction.created_at);
+                  const previousInteraction = interactions[index - 1];
+                  const shouldShowDateSeparator =
+                    !previousInteraction ||
+                    !isSameCalendarDay(interactionDate, new Date(previousInteraction.created_at));
+                  const isStatusEvent = interaction.tipo === 'mudanca_status';
+
                   return (
-                    <div
-                      key={interaction.id}
-                      className={`flex gap-2 sm:gap-3 ${isOwnMessage ? 'flex-row-reverse' : ''}`}
-                    >
-                      <Avatar className="h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
-                        <AvatarImage src={interaction.autor?.foto_perfil || undefined} />
-                        <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                          {interaction.autor?.nome?.charAt(0).toUpperCase() || <User className="h-4 w-4" />}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div
-                        className={`max-w-[80%] sm:max-w-[70%] rounded-lg p-2 sm:p-3 text-xs sm:text-sm ${
-                          isOwnMessage
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted'
-                        }`}
-                      >
-                        <p className="text-xs font-medium opacity-70">
-                          {interaction.autor?.nome || 'Usuário'}
-                        </p>
-                        <p className="mt-1 whitespace-pre-wrap break-words">{interaction.mensagem}</p>
-                        <p className="mt-1 text-xs opacity-50">
-                          {format(new Date(interaction.created_at), 'HH:mm', { locale: ptBR })}
-                        </p>
-                      </div>
+                    <div key={interaction.id} className="space-y-3">
+                      {shouldShowDateSeparator && (
+                        <div className="flex justify-center">
+                          <span className="rounded-full bg-muted px-3 py-1 text-[11px] font-medium text-muted-foreground">
+                            {getDayLabel(interactionDate)}
+                          </span>
+                        </div>
+                      )}
+
+                      {isStatusEvent ? (
+                        <div className="flex justify-center">
+                          <div className="max-w-[92%] rounded-full border bg-background px-3 py-1 text-center text-xs text-muted-foreground shadow-sm">
+                            <span className="font-medium">{interaction.autor?.nome || 'Sistema'}</span>
+                            <span> • {interaction.mensagem}</span>
+                            <span> • {format(interactionDate, 'HH:mm', { locale: ptBR })}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className={`flex gap-2 sm:gap-3 ${isOwnMessage ? 'flex-row-reverse' : ''}`}>
+                          <Avatar className="h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0">
+                            <AvatarImage src={interaction.autor?.foto_perfil || undefined} />
+                            <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                              {interaction.autor?.nome?.charAt(0).toUpperCase() || <User className="h-4 w-4" />}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div
+                            className={`max-w-[80%] sm:max-w-[70%] rounded-lg p-2 sm:p-3 text-xs sm:text-sm ${
+                              isOwnMessage
+                                ? 'bg-primary text-primary-foreground'
+                                : 'bg-muted'
+                            }`}
+                          >
+                            <p className="text-xs font-medium opacity-70">
+                              {interaction.autor?.nome || 'Usuário'}
+                            </p>
+                            <p className="mt-1 whitespace-pre-wrap break-words">{interaction.mensagem}</p>
+                            <p className="mt-1 text-right text-xs opacity-50">
+                              {format(interactionDate, 'HH:mm', { locale: ptBR })}
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })

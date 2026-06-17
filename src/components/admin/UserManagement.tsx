@@ -6,8 +6,10 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
-import { User, Search, Filter, Loader2 } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { User, Search, Filter, Loader2, BarChart3 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { RoleSelector } from './RoleSelector';
@@ -20,6 +22,7 @@ interface UserWithRole {
   foto_perfil: string | null;
   created_at: string;
   role: 'solicitante' | 'agente_ti' | 'agente_manutencao' | 'admin';
+  managementAccess: boolean;
 }
 
 const roleLabels: Record<string, string> = {
@@ -38,6 +41,7 @@ const roleColors: Record<string, string> = {
 
 export function UserManagement() {
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -65,12 +69,21 @@ export function UserManagement() {
 
       if (rolesError) throw rolesError;
 
+      const { data: managementAccess, error: managementAccessError } = await supabase
+        .from('management_report_access')
+        .select('user_id');
+
+      if (managementAccessError) throw managementAccessError;
+
+      const managementAccessSet = new Set((managementAccess || []).map((access) => access.user_id));
+
       // Merge profiles with roles
       const usersWithRoles: UserWithRole[] = (profiles || []).map((profile) => {
         const userRole = roles?.find((r) => r.user_id === profile.id);
         return {
           ...profile,
           role: (userRole?.role as 'solicitante' | 'agente_ti' | 'agente_manutencao' | 'admin') || 'solicitante',
+          managementAccess: managementAccessSet.has(profile.id),
         };
       });
 
@@ -84,6 +97,51 @@ export function UserManagement() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleManagementAccessChange = async (userId: string, enabled: boolean) => {
+    setUpdatingUserId(userId);
+    try {
+      if (enabled) {
+        const { error } = await supabase
+          .from('management_report_access')
+          .upsert({
+            user_id: userId,
+            granted_by: currentUser?.id || null,
+          });
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('management_report_access')
+          .delete()
+          .eq('user_id', userId);
+
+        if (error) throw error;
+      }
+
+      setUsers((prev) =>
+        prev.map((user) =>
+          user.id === userId ? { ...user, managementAccess: enabled } : user
+        )
+      );
+
+      toast({
+        title: enabled ? 'Alta Gestão liberada' : 'Alta Gestão removida',
+        description: enabled
+          ? 'Usuário poderá acessar o relatório executivo.'
+          : 'Usuário não poderá mais acessar o relatório executivo.',
+      });
+    } catch (error) {
+      console.error('Error updating management access:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível atualizar o acesso à Alta Gestão',
+        variant: 'destructive',
+      });
+    } finally {
+      setUpdatingUserId(null);
     }
   };
 
@@ -231,7 +289,20 @@ export function UserManagement() {
                     <span>Desde {format(new Date(user.created_at), "dd/MM/yyyy", { locale: ptBR })}</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-3 sm:items-end">
+                  <div className="flex items-center gap-2 rounded-md border px-3 py-2">
+                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                    <div className="leading-tight">
+                      <p className="text-xs font-medium">Alta Gestão</p>
+                      <p className="text-[11px] text-muted-foreground">Relatório executivo</p>
+                    </div>
+                    <Switch
+                      checked={user.managementAccess || user.role === 'admin'}
+                      disabled={updatingUserId === user.id || user.role === 'admin'}
+                      onCheckedChange={(checked) => handleManagementAccessChange(user.id, checked)}
+                      aria-label={`Acesso à Alta Gestão para ${user.nome}`}
+                    />
+                  </div>
                   {updatingUserId === user.id ? (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -260,6 +331,8 @@ export function UserManagement() {
           <span>{users.filter((u) => u.role === 'agente_manutencao').length} agentes manutenção</span>
           <span>•</span>
           <span>{users.filter((u) => u.role === 'admin').length} admins</span>
+          <span>•</span>
+          <span>{users.filter((u) => u.managementAccess || u.role === 'admin').length} com Alta Gestão</span>
         </div>
       </CardContent>
     </Card>
