@@ -147,14 +147,114 @@ export default function Dashboard() {
     try {
       console.log('[PDF] Iniciando geração do PDF...');
       const doc = new jsPDF();
-      doc.setFontSize(16);
-      doc.text('Relatório de Tickets', 14, 16);
-      doc.setFontSize(10);
       const now = new Date();
       const dataHora = now.toLocaleString('pt-BR');
-      doc.text(`Gerado em: ${dataHora}`, 14, 22);
-      const filtrosResumo = [];
-      if (statusFilter.length > 0) filtrosResumo.push(`Status: ${statusFilter.join(', ')}`);
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const marginX = 14;
+      const contentWidth = pageWidth - marginX * 2;
+
+      const statusLabel = (status: TicketStatus) => statusConfig[status]?.label || status;
+      const priorityLabel = (priority?: string | null) => {
+        const labels: Record<string, string> = {
+          baixa: 'Baixa',
+          media: 'Média',
+          média: 'Média',
+          alta: 'Alta',
+          critica: 'Crítica',
+          crítica: 'Crítica',
+        };
+
+        return labels[(priority || '').toLowerCase()] || priority || 'Não informada';
+      };
+
+      const normalizePriority = (priority?: string | null) => (
+        (priority || '')
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+      );
+
+      const getRiskInfo = (ticket: TicketData) => {
+        if (ticket.status === 'resolvido' || ticket.status === 'fechado') {
+          return {
+            label: ticket.status === 'fechado' ? 'Fechado' : 'Resolvido',
+            level: 'resolved',
+            color: [34, 197, 94] as [number, number, number],
+          };
+        }
+
+        const durationMs = getDurationMs(ticket.created_at) || 0;
+        const hours = durationMs / 3600000;
+        const warningAfter = ticket.tipo === 'Manutenção predial' ? 72 : 24;
+        const criticalAfter = ticket.tipo === 'Manutenção predial' ? 96 : 48;
+
+        if (hours >= criticalAfter) {
+          return {
+            label: `Crítico: sem resolução há ${formatDuration(durationMs)}`,
+            level: 'critical',
+            color: [239, 68, 68] as [number, number, number],
+          };
+        }
+
+        if (hours >= warningAfter) {
+          return {
+            label: `Atenção: sem resolução há ${formatDuration(durationMs)}`,
+            level: 'warning',
+            color: [245, 158, 11] as [number, number, number],
+          };
+        }
+
+        return {
+          label: `No prazo: ${formatDuration(durationMs)}`,
+          level: 'normal',
+          color: [16, 185, 129] as [number, number, number],
+        };
+      };
+
+      const countBy = <T,>(items: T[], getKey: (item: T) => string) => (
+        items.reduce<Record<string, number>>((acc, item) => {
+          const key = getKey(item) || 'Não informado';
+          acc[key] = (acc[key] || 0) + 1;
+          return acc;
+        }, {})
+      );
+
+      const topRows = (counts: Record<string, number>, limit = 8) => (
+        Object.entries(counts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, limit)
+          .map(([label, total]) => [label, total.toString(), `${Math.round((total / exportTickets.length) * 100)}%`])
+      );
+
+      const riskTickets = exportTickets.map(ticket => ({
+        ticket,
+        risk: getRiskInfo(ticket),
+        durationMs: getDurationMs(ticket.created_at) || 0,
+      }));
+
+      const delayedTickets = riskTickets.filter(t => t.risk.level === 'warning' || t.risk.level === 'critical');
+      const highPriorityOpenTickets = exportTickets.filter(t => {
+        const priority = normalizePriority(t.prioridade);
+        return unresolvedStatuses.includes(t.status) && (priority === 'alta' || priority === 'critica');
+      });
+
+      const summaryCards = [
+        { label: 'Total', value: exportTickets.length.toString(), color: [31, 41, 55] as [number, number, number] },
+        { label: 'Abertos', value: exportTickets.filter(t => t.status === 'aberto').length.toString(), color: [249, 115, 22] as [number, number, number] },
+        { label: 'Em atendimento', value: exportTickets.filter(t => t.status === 'em_andamento').length.toString(), color: [37, 99, 235] as [number, number, number] },
+        { label: 'Aguardando', value: exportTickets.filter(t => t.status === 'aguardando_resposta').length.toString(), color: [234, 179, 8] as [number, number, number] },
+        { label: 'Resolvidos', value: exportTickets.filter(t => t.status === 'resolvido').length.toString(), color: [22, 163, 74] as [number, number, number] },
+        { label: 'Fechados', value: exportTickets.filter(t => t.status === 'fechado').length.toString(), color: [100, 116, 139] as [number, number, number] },
+        { label: 'Atrasados', value: delayedTickets.length.toString(), color: [220, 38, 38] as [number, number, number] },
+        { label: 'Alta/Crítica abertas', value: highPriorityOpenTickets.length.toString(), color: [239, 68, 68] as [number, number, number] },
+        { label: 'Satisfação média', value: `${stats.satisfacaoMedia || 0}/5`, color: [234, 179, 8] as [number, number, number] },
+        { label: 'Média TI', value: formatDuration(stats.mediaResolucaoTi), color: [37, 99, 235] as [number, number, number] },
+        { label: 'Média Manutenção', value: formatDuration(stats.mediaResolucaoManutencao), color: [16, 185, 129] as [number, number, number] },
+      ];
+
+      const filtrosResumo: string[] = [];
+      if (statusFilter.length > 0) filtrosResumo.push(`Status: ${statusFilter.map(status => statusLabel(status as TicketStatus)).join(', ')}`);
       if (tipoFilter !== 'all') filtrosResumo.push(`Tipo: ${tipoFilter}`);
       if (periodoInicio || periodoFim) {
         const inicio = periodoInicio ? new Date(periodoInicio).toLocaleDateString('pt-BR') : '';
@@ -163,35 +263,282 @@ export default function Dashboard() {
       }
       if (setorFilter && setorFilter !== 'all') filtrosResumo.push(`Setor: ${setorFilter}`);
       if (ratingMin && ratingMin > 0) filtrosResumo.push(`Avaliação Mínima: ${ratingMin}`);
-      doc.text(filtrosResumo.join(' | '), 14, 28);
-      console.log('[PDF] Cabeçalho e filtros adicionados');
+
+      doc.setFillColor(210, 32, 39);
+      doc.rect(0, 0, pageWidth, 26, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(17);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Relatório Operacional de Tickets', marginX, 14);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Gerado em: ${dataHora}`, marginX, 21);
+
+      doc.setTextColor(17, 24, 39);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.text(selectedIds.length > 0 ? 'Escopo: tickets selecionados' : 'Escopo: lista filtrada na tela', marginX, 36);
+      doc.setFont('helvetica', 'normal');
+      const filtersText = filtrosResumo.length ? filtrosResumo.join(' | ') : 'Sem filtros adicionais aplicados';
+      const filterLines = doc.splitTextToSize(filtersText, contentWidth);
+      doc.text(filterLines, marginX, 42);
+
+      let currentY = 48 + (filterLines.length - 1) * 5;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Dashboard resumo', marginX, currentY);
+      currentY += 6;
+
+      const cardGap = 4;
+      const cardWidth = (contentWidth - cardGap * 2) / 3;
+      const cardHeight = 20;
+      summaryCards.forEach((card, index) => {
+        const col = index % 3;
+        const row = Math.floor(index / 3);
+        const x = marginX + col * (cardWidth + cardGap);
+        const y = currentY + row * (cardHeight + 4);
+
+        doc.setDrawColor(card.color[0], card.color[1], card.color[2]);
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(x, y, cardWidth, cardHeight, 2, 2, 'FD');
+        doc.setFillColor(card.color[0], card.color[1], card.color[2]);
+        doc.rect(x, y, 2.2, cardHeight, 'F');
+        doc.setTextColor(75, 85, 99);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.text(card.label, x + 5, y + 7);
+        doc.setTextColor(17, 24, 39);
+        doc.setFontSize(13);
+        doc.setFont('helvetica', 'bold');
+        doc.text(card.value, x + 5, y + 16);
+      });
+
+      currentY += Math.ceil(summaryCards.length / 3) * (cardHeight + 4) + 4;
+
+      const statusRows = topRows(countBy(exportTickets, t => statusLabel(t.status)), 10);
+      const priorityRows = topRows(countBy(exportTickets, t => priorityLabel(t.prioridade)), 10);
+      const areaRows = topRows(countBy(exportTickets, t => t.tipo || 'Não informado'), 10);
+
       autoTable(doc, {
-        startY: 34,
+        startY: currentY,
+        head: [['Status', 'Qtd.', '%']],
+        body: statusRows,
+        theme: 'grid',
+        tableWidth: 58,
+        margin: { left: marginX },
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [37, 99, 235] },
+      });
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Prioridade', 'Qtd.', '%']],
+        body: priorityRows,
+        theme: 'grid',
+        tableWidth: 58,
+        margin: { left: marginX + 64 },
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [239, 68, 68] },
+      });
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Área', 'Qtd.', '%']],
+        body: areaRows,
+        theme: 'grid',
+        tableWidth: 58,
+        margin: { left: marginX + 128 },
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [16, 185, 129] },
+      });
+
+      currentY = Math.max(
+        (doc as any).lastAutoTable?.finalY || currentY,
+        currentY + 34
+      ) + 10;
+
+      const topDelayedRows = riskTickets
+        .filter(item => unresolvedStatuses.includes(item.ticket.status))
+        .sort((a, b) => b.durationMs - a.durationMs)
+        .slice(0, 8)
+        .map(({ ticket, risk }) => [
+          ticket.protocolo || ticket.id,
+          ticket.titulo,
+          ticket.tipo || 'Não informado',
+          priorityLabel(ticket.prioridade),
+          risk.label,
+        ]);
+
+      doc.setFontSize(12);
+      doc.setTextColor(17, 24, 39);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Sinalização de problemas', marginX, currentY);
+      currentY += 4;
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Protocolo', 'Título', 'Área', 'Prioridade', 'Sinalização']],
+        body: topDelayedRows.length ? topDelayedRows : [['-', 'Nenhum ticket sem resolução encontrado no filtro atual', '-', '-', '-']],
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [220, 38, 38] },
+        columnStyles: {
+          0: { cellWidth: 25 },
+          1: { cellWidth: 58 },
+          2: { cellWidth: 30 },
+          3: { cellWidth: 24 },
+          4: { cellWidth: 52 },
+        },
+      });
+
+      currentY = ((doc as any).lastAutoTable?.finalY || currentY) + 10;
+
+      const categoryRows = topRows(countBy(exportTickets, t => t.categoria || 'Não informado'), 8);
+      const sectorRows = topRows(countBy(exportTickets, t => t.setor || 'Não informado'), 8);
+      const requesterRows = topRows(countBy(exportTickets, t => t.solicitante?.nome || 'Não informado'), 8);
+
+      const ensurePageSpace = (requiredHeight: number) => {
+        if (currentY + requiredHeight > pageHeight - 20) {
+          doc.addPage();
+          currentY = 18;
+        }
+      };
+
+      ensurePageSpace(70);
+      doc.setFontSize(12);
+      doc.setTextColor(17, 24, 39);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Distribuições e rankings', marginX, currentY);
+      currentY += 4;
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Categoria', 'Qtd.', '%']],
+        body: categoryRows,
+        theme: 'grid',
+        tableWidth: 58,
+        margin: { left: marginX },
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [31, 41, 55] },
+      });
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Setor', 'Qtd.', '%']],
+        body: sectorRows,
+        theme: 'grid',
+        tableWidth: 58,
+        margin: { left: marginX + 64 },
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [31, 41, 55] },
+      });
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Solicitante', 'Qtd.', '%']],
+        body: requesterRows,
+        theme: 'grid',
+        tableWidth: 58,
+        margin: { left: marginX + 128 },
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [31, 41, 55] },
+      });
+
+      currentY = ((doc as any).lastAutoTable?.finalY || currentY) + 10;
+
+      ensurePageSpace(45);
+      doc.setFontSize(12);
+      doc.setTextColor(17, 24, 39);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Tickets detalhados', marginX, currentY);
+      currentY += 4;
+
+      autoTable(doc, {
+        startY: currentY,
         head: [[
-          'ID',
+          'Protocolo',
           'Título',
           'Status',
-          'Tempo',
-          'Tipo',
+          'Prioridade',
+          'Área',
+          'Categoria',
           'Setor',
-          'Data de Abertura',
-          'Responsável',
+          'Solicitante',
+          'Abertura',
+          'Tempo',
+          'Sinalização',
         ]],
-        body: exportTickets.map(t => [
-          t.protocolo || t.id,
-          t.titulo,
-          t.status,
-          getResolutionMetricLabel(t),
-          t.tipo || '',
-          t.categoria || '',
-          t.created_at ? new Date(t.created_at).toLocaleDateString('pt-BR') : '',
-          t.responsavel || 'Usuário',
-        ]),
-        styles: { fontSize: 9 },
-        headStyles: { fillColor: [41, 128, 185] },
+        body: exportTickets.map(t => {
+          const risk = getRiskInfo(t);
+          return [
+            t.protocolo || t.id,
+            t.titulo,
+            statusLabel(t.status),
+            priorityLabel(t.prioridade),
+            t.tipo || 'Não informado',
+            t.categoria || 'Não informado',
+            t.setor || 'Não informado',
+            t.solicitante?.nome || 'Não informado',
+            t.created_at ? format(new Date(t.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR }) : '',
+            getResolutionMetricLabel(t),
+            risk.label,
+          ];
+        }),
+        styles: { fontSize: 7, cellPadding: 1.8, overflow: 'linebreak' },
+        headStyles: { fillColor: [41, 128, 185], fontSize: 7 },
+        columnStyles: {
+          0: { cellWidth: 19 },
+          1: { cellWidth: 32 },
+          2: { cellWidth: 18 },
+          3: { cellWidth: 17 },
+          4: { cellWidth: 21 },
+          5: { cellWidth: 22 },
+          6: { cellWidth: 20 },
+          7: { cellWidth: 27 },
+          8: { cellWidth: 20 },
+          9: { cellWidth: 24 },
+          10: { cellWidth: 32 },
+        },
+        didParseCell: (data) => {
+          if (data.section !== 'body') return;
+          const ticket = exportTickets[data.row.index];
+          if (!ticket) return;
+
+          if (data.column.index === 2) {
+            const colors: Record<TicketStatus, [number, number, number]> = {
+              aberto: [249, 115, 22],
+              em_andamento: [37, 99, 235],
+              aguardando_resposta: [234, 179, 8],
+              resolvido: [22, 163, 74],
+              fechado: [100, 116, 139],
+            };
+            data.cell.styles.textColor = colors[ticket.status];
+            data.cell.styles.fontStyle = 'bold';
+          }
+
+          if (data.column.index === 10) {
+            const risk = getRiskInfo(ticket);
+            data.cell.styles.textColor = risk.color;
+            data.cell.styles.fontStyle = 'bold';
+          }
+        },
       });
-      console.log('[PDF] Tabela adicionada');
-      const pad = (n) => n.toString().padStart(2, '0');
+
+      const pageCount = doc.getNumberOfPages();
+      for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+        doc.setPage(pageNumber);
+        doc.setFontSize(8);
+        doc.setTextColor(100, 116, 139);
+        doc.text(
+          `Página ${pageNumber} de ${pageCount}`,
+          pageWidth - marginX,
+          pageHeight - 8,
+          { align: 'right' }
+        );
+        doc.text('Help Desk - Grupo Astrotur', marginX, pageHeight - 8);
+      }
+
+      console.log('[PDF] Relatório operacional adicionado');
+      const pad = (n: number) => n.toString().padStart(2, '0');
       const fileName = `relatorio-tickets-${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}.pdf`;
       doc.save(fileName);
       console.log('[PDF] PDF salvo:', fileName);
