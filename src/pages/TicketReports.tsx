@@ -221,14 +221,14 @@ function MetricCard({
   };
 
   return (
-    <Card className={`border-l-4 ${tones[tone]}`}>
-      <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-        <CardDescription>{title}</CardDescription>
-        <span className="text-muted-foreground">{icon}</span>
+    <Card className={`border-l-[3px] ${tones[tone]} shadow-sm`}>
+      <CardHeader className="flex flex-row items-start justify-between space-y-0 px-3 pb-1.5 pt-3">
+        <CardDescription className="truncate text-[11px] font-medium uppercase tracking-wide">{title}</CardDescription>
+        <span className="text-muted-foreground [&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
       </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold sm:text-3xl">{value}</div>
-        {description && <p className="mt-1 text-xs text-muted-foreground">{description}</p>}
+      <CardContent className="px-3 pb-3 pt-0">
+        <div className="truncate text-xl font-bold leading-tight sm:text-2xl">{value}</div>
+        {description && <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{description}</p>}
       </CardContent>
     </Card>
   );
@@ -728,30 +728,30 @@ export default function TicketReports() {
         </div>
       </header>
 
-      <main className="container space-y-5 px-3 py-4 sm:px-4 sm:py-6">
+      <main className="container space-y-4 px-3 py-3 sm:px-4 sm:py-4">
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <FileText className="h-5 w-5" />
+          <CardHeader className="px-4 pb-2 pt-4">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <FileText className="h-4 w-4" />
               Parâmetros do relatório
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-xs">
               A prévia abaixo usa os mesmos dados que serão exportados no PDF.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-            <div className="space-y-2">
-              <Label>Início</Label>
-              <Input type="date" value={periodoInicio} onChange={(event) => setPeriodoInicio(event.target.value)} />
+          <CardContent className="grid gap-2 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-6">
+            <div className="space-y-1">
+              <Label className="text-xs">Início</Label>
+              <Input className="h-9" type="date" value={periodoInicio} onChange={(event) => setPeriodoInicio(event.target.value)} />
             </div>
-            <div className="space-y-2">
-              <Label>Fim</Label>
-              <Input type="date" value={periodoFim} onChange={(event) => setPeriodoFim(event.target.value)} />
+            <div className="space-y-1">
+              <Label className="text-xs">Fim</Label>
+              <Input className="h-9" type="date" value={periodoFim} onChange={(event) => setPeriodoFim(event.target.value)} />
             </div>
-            <div className="space-y-2">
-              <Label>Área</Label>
+            <div className="space-y-1">
+              <Label className="text-xs">Área</Label>
               <Select value={forcedTeamType || tipoFilter} onValueChange={setTipoFilter} disabled={!!forcedTeamType}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todo o sistema</SelectItem>
                   <SelectItem value="TI">TI</SelectItem>
@@ -759,21 +759,21 @@ export default function TicketReports() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label>Setor</Label>
-              <Input value={setorFilter === 'all' ? '' : setorFilter} onChange={(event) => setSetorFilter(event.target.value || 'all')} placeholder="Todos" />
+            <div className="space-y-1">
+              <Label className="text-xs">Setor</Label>
+              <Input className="h-9" value={setorFilter === 'all' ? '' : setorFilter} onChange={(event) => setSetorFilter(event.target.value || 'all')} placeholder="Todos" />
             </div>
-            <div className="space-y-2 lg:col-span-2">
-              <Label>Status</Label>
-              <div className="flex flex-wrap gap-2 rounded-md border p-2">
+            <div className="space-y-1 lg:col-span-2">
+              <Label className="text-xs">Status</Label>
+              <div className="flex min-h-9 flex-wrap gap-1 rounded-md border px-2 py-1">
                 {statusOptions.map((status) => (
-                  <label key={status} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-muted">
+                  <label key={status} className="flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs hover:bg-muted">
                     <Checkbox checked={statusFilters.includes(status)} onCheckedChange={(checked) => toggleStatusFilter(status, checked === true)} />
                     <span>{statusLabels[status]}</span>
                   </label>
                 ))}
                 {statusFilters.length > 0 && (
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setStatusFilters([])}>
+                  <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setStatusFilters([])}>
                     Limpar
                   </Button>
                 )}
@@ -793,7 +793,7 @@ export default function TicketReports() {
           </CardContent>
         </Card>
 
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+        <section className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
           <MetricCard title="Total" value={stats.total} description="tickets no filtro" icon={<Ticket className="h-4 w-4" />} />
           <MetricCard title="Abertos" value={stats.abertos} description="ainda não iniciados" icon={<Ticket className="h-4 w-4" />} tone="warning" />
           <MetricCard title="Em atendimento" value={stats.emAtendimento} description="em execução" icon={<Clock className="h-4 w-4" />} tone="blue" />
@@ -802,7 +802,7 @@ export default function TicketReports() {
           <MetricCard title="Atrasados" value={stats.delayed} description="atenção ou crítico" icon={<TriangleAlert className="h-4 w-4" />} tone="danger" />
         </section>
 
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
           <MetricCard title="Alta/Crítica abertas" value={stats.highPriorityOpen} icon={<TriangleAlert className="h-4 w-4" />} tone="danger" />
           <MetricCard title="Críticos por SLA" value={stats.critical} icon={<TriangleAlert className="h-4 w-4" />} tone="danger" />
           <MetricCard title="Dentro do SLA" value={`${stats.insideSlaPercent}%`} icon={<BarChart3 className="h-4 w-4" />} tone="green" />
