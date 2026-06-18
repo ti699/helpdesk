@@ -15,6 +15,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
@@ -137,7 +138,7 @@ export default function ExecutiveDashboard() {
   const [requesterOptions, setRequesterOptions] = useState<RequesterOption[]>([]);
   const [functionOptions, setFunctionOptions] = useState<string[]>([]);
   const [tipoFilter, setTipoFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilters, setStatusFilters] = useState<TicketStatus[]>([]);
   const [requesterFilter, setRequesterFilter] = useState('all');
   const [functionFilter, setFunctionFilter] = useState('all');
   const [periodoInicio, setPeriodoInicio] = useState(() => {
@@ -145,6 +146,7 @@ export default function ExecutiveDashboard() {
     return format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd');
   });
   const [periodoFim, setPeriodoFim] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -179,7 +181,17 @@ export default function ExecutiveDashboard() {
     if (user && hasExecutiveAccess) {
       fetchManagementData();
     }
-  }, [user, hasExecutiveAccess, tipoFilter, statusFilter, requesterFilter, functionFilter, periodoInicio, periodoFim]);
+  }, [user, hasExecutiveAccess, tipoFilter, statusFilters, requesterFilter, functionFilter, periodoInicio, periodoFim]);
+
+  const toggleStatusFilter = (status: TicketStatus, checked: boolean) => {
+    setStatusFilters((current) => {
+      if (checked) {
+        return current.includes(status) ? current : [...current, status];
+      }
+
+      return current.filter((item) => item !== status);
+    });
+  };
 
   const fetchManagementData = async () => {
     if (!periodValidation.valid) {
@@ -205,8 +217,8 @@ export default function ExecutiveDashboard() {
         ticketQuery = ticketQuery.eq('tipo', tipoFilter);
       }
 
-      if (statusFilter !== 'all') {
-        ticketQuery = ticketQuery.eq('status', statusFilter);
+      if (statusFilters.length > 0) {
+        ticketQuery = ticketQuery.in('status', statusFilters);
       }
 
       const { data: ticketData, error: ticketError } = await ticketQuery;
@@ -281,6 +293,7 @@ export default function ExecutiveDashboard() {
       setFeedbacks(filteredTickets
         .filter((ticket) => ticket.feedback_nota)
         .map((ticket) => ({ ticket_id: ticket.id, nota_satisfacao: ticket.feedback_nota })));
+      setHasLoadedOnce(true);
     } catch (error) {
       console.error('Erro ao carregar dashboard executivo:', error);
     } finally {
@@ -334,7 +347,9 @@ export default function ExecutiveDashboard() {
     const doc = new jsPDF();
     const generatedAt = format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
     const areaLabel = tipoFilter === 'all' ? 'Todas' : tipoFilter === 'Manutenção predial' ? 'Manutenção' : tipoFilter;
-    const statusLabel = statusFilter === 'all' ? 'Todos' : statusFilter.replaceAll('_', ' ');
+    const statusLabel = statusFilters.length === 0
+      ? 'Todos'
+      : statusFilters.map((status) => statusLabels[status]).join(', ');
 
     doc.setFontSize(16);
     doc.text('Relatório Alta Gestão - Help Desk Astrotur', 14, 18);
@@ -420,7 +435,7 @@ export default function ExecutiveDashboard() {
     doc.save(`relatorio-alta-gestao-${format(new Date(), 'yyyy-MM-dd-HHmm')}.pdf`);
   };
 
-  if (authLoading || loading) {
+  if (authLoading || (loading && !hasLoadedOnce)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -503,17 +518,29 @@ export default function ExecutiveDashboard() {
             </div>
             <div className="space-y-2">
               <Label>Status</Label>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="aberto">Aberto</SelectItem>
-                  <SelectItem value="em_andamento">Em andamento</SelectItem>
-                  <SelectItem value="aguardando_resposta">Aguardando resposta</SelectItem>
-                  <SelectItem value="resolvido">Resolvido</SelectItem>
-                  <SelectItem value="fechado">Fechado</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="rounded-md border px-3 py-2">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-sm text-muted-foreground">
+                    {statusFilters.length === 0 ? 'Todos' : `${statusFilters.length} selecionado${statusFilters.length > 1 ? 's' : ''}`}
+                  </span>
+                  {statusFilters.length > 0 && (
+                    <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setStatusFilters([])}>
+                      Limpar
+                    </Button>
+                  )}
+                </div>
+                <div className="grid gap-2">
+                  {(Object.keys(statusLabels) as TicketStatus[]).map((status) => (
+                    <label key={status} className="flex cursor-pointer items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={statusFilters.includes(status)}
+                        onCheckedChange={(checked) => toggleStatusFilter(status, checked === true)}
+                      />
+                      <span>{statusLabels[status]}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Solicitante</Label>
@@ -546,6 +573,12 @@ export default function ExecutiveDashboard() {
             {!periodValidation.valid && (
               <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-900 dark:bg-yellow-950/20 dark:text-yellow-200 sm:col-span-2 lg:col-span-6">
                 {periodValidation.message}
+              </div>
+            )}
+            {loading && hasLoadedOnce && periodValidation.valid && (
+              <div className="flex items-center gap-2 rounded-lg border bg-muted/50 p-3 text-sm text-muted-foreground sm:col-span-2 lg:col-span-6">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Atualizando relatório...
               </div>
             )}
           </CardContent>

@@ -162,6 +162,47 @@ const getTicketRequester = async (ticket: TicketRecord) => {
   return data as Profile;
 };
 
+const getPendingFeedbackTickets = async (requesterId: string) => {
+  const { data: tickets, error: ticketsError } = await admin
+    .from("tickets")
+    .select("id, protocolo, titulo")
+    .eq("solicitante_id", requesterId)
+    .in("status", ["resolvido", "fechado"]);
+
+  if (ticketsError) {
+    throw new HttpError(400, ticketsError.message);
+  }
+
+  const ticketIds = (tickets || []).map((ticket) => ticket.id);
+  if (!ticketIds.length) return [];
+
+  const { data: feedbacks, error: feedbacksError } = await admin
+    .from("feedbacks")
+    .select("ticket_id")
+    .in("ticket_id", ticketIds);
+
+  if (feedbacksError) {
+    throw new HttpError(400, feedbacksError.message);
+  }
+
+  const evaluatedTicketIds = new Set((feedbacks || []).map((feedback) => feedback.ticket_id));
+  return (tickets || []).filter((ticket) => !evaluatedTicketIds.has(ticket.id));
+};
+
+const hasTicketFeedback = async (ticketId: string) => {
+  const { data, error } = await admin
+    .from("feedbacks")
+    .select("id")
+    .eq("ticket_id", ticketId)
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(400, error.message);
+  }
+
+  return !!data;
+};
+
 const isTeamMemberForTicket = (role: AppRole, ticketType?: string | null) =>
   (role === "agente_ti" && ticketType === "TI") ||
   (role === "agente_manutencao" && ticketType === "Manutenção predial");
@@ -315,6 +356,15 @@ const handleCreateTicket = async (
 
   if (requester.id !== context.user.id && !["agente_ti", "agente_manutencao", "admin"].includes(context.role)) {
     throw new HttpError(403, "Você não tem permissão para criar ticket para outra pessoa");
+  }
+
+  const pendingFeedbackTickets = await getPendingFeedbackTickets(requester.id);
+  if (pendingFeedbackTickets.length > 0) {
+    const protocols = pendingFeedbackTickets.map((ticket) => ticket.protocolo).join(", ");
+    throw new HttpError(
+      409,
+      `Antes de abrir um novo ticket, avalie o atendimento pendente: ${protocols}`,
+    );
   }
 
   const { data, error } = await admin
@@ -478,9 +528,14 @@ const handleUpdateStatus = async (
       sendEmails("ticket_activity", ticketPayload, departmentRecipients),
     ]);
   } else if (newStatus === "fechado") {
-    await sendEmails("ticket_closed", ticketPayload, [
-      ...requesterRecipient(requester),
-      ...departmentRecipients,
+    const alreadyEvaluated = await hasTicketFeedback(ticket.id);
+    await Promise.all([
+      sendEmails(
+        alreadyEvaluated ? "ticket_closed" : "feedback_request",
+        ticketPayload,
+        requesterRecipient(requester),
+      ),
+      sendEmails("ticket_closed", ticketPayload, departmentRecipients),
     ]);
   } else {
     await sendEmails("status_updated", ticketPayload, [
