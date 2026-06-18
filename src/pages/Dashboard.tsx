@@ -556,6 +556,18 @@ export default function Dashboard() {
   
   // Selection
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  const handleOpenTicketReport = () => {
+    const params = new URLSearchParams();
+
+    if (statusFilter.length > 0) params.set('status', statusFilter.join(','));
+    if (tipoFilter !== 'all') params.set('tipo', tipoFilter);
+    if (periodoInicio) params.set('periodoInicio', periodoInicio);
+    if (periodoFim) params.set('periodoFim', periodoFim);
+    if (setorFilter && setorFilter !== 'all') params.set('setor', setorFilter);
+
+    navigate(`/relatorios/tickets${params.toString() ? `?${params.toString()}` : ''}`);
+  };
   
   const [stats, setStats] = useState({
     novosHoje: 0,
@@ -1024,7 +1036,9 @@ export default function Dashboard() {
                 onRatingMinChange={setRatingMin}
                 showTipoFilter={role === 'admin'} // Only admin can filter by type
                 showAdvancedFilters={true}
-                onExportPDF={handleExportPDF}
+                onExportPDF={handleOpenTicketReport}
+                exportLabel="Gerar Relatório"
+                exportTitle="Gerar prévia do relatório operacional"
               />
             </div>
           </CardHeader>

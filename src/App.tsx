@@ -12,6 +12,7 @@ import NovoTicket from "./pages/NovoTicket";
 import TicketDetail from "./pages/TicketDetail";
 import Dashboard from "./pages/Dashboard";
 import ExecutiveDashboard from "./pages/ExecutiveDashboard";
+import TicketReports from "./pages/TicketReports";
 import TicketWorkspace from "./pages/TicketWorkspace";
 import Admin from "./pages/Admin";
 import ResetPassword from "./pages/ResetPassword";
@@ -67,6 +68,14 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <ExecutiveDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/relatorios/tickets"
+                element={
+                  <ProtectedRoute>
+                    <TicketReports />
                   </ProtectedRoute>
                 }
               />

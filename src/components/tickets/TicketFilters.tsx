@@ -32,6 +32,8 @@ interface TicketFiltersProps {
   showAdvancedFilters?: boolean;
   onExportPDF: () => void;
   disableExportPDF?: boolean;
+  exportLabel?: string;
+  exportTitle?: string;
 }
 
 export function TicketFilters({
@@ -51,6 +53,8 @@ export function TicketFilters({
   showAdvancedFilters = false,
   onExportPDF,
   disableExportPDF = false,
+  exportLabel = 'Exportar PDF',
+  exportTitle = 'Exportar tickets como PDF',
 }: TicketFiltersProps) {
   const [isStatusOpen, setIsStatusOpen] = useState(false);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
@@ -114,19 +118,19 @@ export function TicketFilters({
 
   return (
     <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-      {/* Botão Exportar PDF */}
+      {/* Botão de relatório/exportação */}
       <Button
         type="button"
         variant="outline"
         size="sm"
         className="gap-1 sm:gap-2 text-xs sm:text-sm flex-shrink-0"
-        onClick={() => { console.log('[UI] Clique exportar PDF'); onExportPDF(); }}
+        onClick={() => { console.log('[UI] Clique relatório/exportação'); onExportPDF(); }}
         disabled={disableExportPDF}
-        title="Exportar tickets como PDF"
+        title={exportTitle}
       >
         {/* Ícone FileDown Lucide */}
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" className="h-4 w-4 mr-1"><path d="M12 3v12m0 0-4-4m4 4 4-4"/><rect x="4" y="19" width="16" height="2" rx="1"/></svg>
-        Exportar PDF
+        {exportLabel}
       </Button>
       {/* Status Filter - Multi-select Dropdown */}
       <Popover open={isStatusOpen} onOpenChange={setIsStatusOpen}>
