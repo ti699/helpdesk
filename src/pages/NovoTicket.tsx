@@ -27,7 +27,8 @@ import {
   Image as ImageIcon,
   Send,
   AlertTriangle,
-  UserPlus
+  UserPlus,
+  Star
 } from 'lucide-react';
 import { z } from 'zod';
 import { TicketTypeSelect } from '@/components/tickets/TicketTypeSelect';
@@ -46,6 +47,14 @@ interface Attachment {
   type: 'image' | 'file';
 }
 
+interface PendingFeedbackTicket {
+  id: string;
+  protocolo: string;
+  titulo: string;
+  status: string | null;
+  created_at: string | null;
+}
+
 export default function NovoTicket() {
   const { user, role } = useAuth();
   const navigate = useNavigate();
@@ -60,6 +69,8 @@ export default function NovoTicket() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [checkingPendingFeedback, setCheckingPendingFeedback] = useState(true);
+  const [pendingFeedbackTickets, setPendingFeedbackTickets] = useState<PendingFeedbackTicket[]>([]);
   
   // Create for another user
   const [createForOther, setCreateForOther] = useState(false);
@@ -76,6 +87,58 @@ export default function NovoTicket() {
   useEffect(() => {
     setCategoria('Outros');
   }, [tipo]);
+
+  useEffect(() => {
+    if (!user) {
+      setCheckingPendingFeedback(false);
+      return;
+    }
+
+    fetchPendingFeedbackTickets();
+  }, [user]);
+
+  const fetchPendingFeedbackTickets = async () => {
+    if (!user) return;
+
+    setCheckingPendingFeedback(true);
+    try {
+      const { data: resolvedTickets, error: ticketsError } = await supabase
+        .from('tickets')
+        .select('id, protocolo, titulo, status, created_at')
+        .eq('solicitante_id', user.id)
+        .in('status', ['resolvido', 'fechado'])
+        .order('created_at', { ascending: false });
+
+      if (ticketsError) throw ticketsError;
+
+      const ticketIds = (resolvedTickets || []).map((ticket) => ticket.id);
+      if (!ticketIds.length) {
+        setPendingFeedbackTickets([]);
+        return;
+      }
+
+      const { data: feedbacks, error: feedbacksError } = await supabase
+        .from('feedbacks')
+        .select('ticket_id')
+        .in('ticket_id', ticketIds);
+
+      if (feedbacksError) throw feedbacksError;
+
+      const evaluatedTicketIds = new Set((feedbacks || []).map((feedback) => feedback.ticket_id));
+      setPendingFeedbackTickets(
+        (resolvedTickets || []).filter((ticket) => !evaluatedTicketIds.has(ticket.id)) as PendingFeedbackTicket[],
+      );
+    } catch (error) {
+      console.error('Error checking pending feedback:', error);
+      toast({
+        title: 'Erro ao verificar avaliações',
+        description: 'Não foi possível confirmar se existem avaliações pendentes.',
+        variant: 'destructive',
+      });
+    } finally {
+      setCheckingPendingFeedback(false);
+    }
+  };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -267,6 +330,8 @@ export default function NovoTicket() {
         errorMessage = 'Erro de conexão. Verifique sua internet e tente novamente.';
       } else if (error instanceof Error && error.message.includes('network')) {
         errorMessage = 'Erro de conexão. Verifique sua internet e tente novamente.';
+      } else if (error instanceof Error && error.message) {
+        errorMessage = error.message;
       }
       
       toast({
@@ -279,22 +344,86 @@ export default function NovoTicket() {
     }
   };
 
+  const renderHeader = () => (
+    <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur">
+      <div className="container flex h-16 items-center gap-2 sm:gap-4 px-3 sm:px-4">
+        <Link to="/">
+          <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10">
+            <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
+          </Button>
+        </Link>
+        <div className="min-w-0">
+          <h1 className="text-base sm:text-lg font-semibold truncate">Nova Solicitação</h1>
+          <p className="text-xs text-muted-foreground">Descreva seu problema</p>
+        </div>
+      </div>
+    </header>
+  );
+
+  if (checkingPendingFeedback) {
+    return (
+      <div className="min-h-screen bg-background">
+        {renderHeader()}
+        <main className="container flex min-h-[calc(100vh-4rem)] items-center justify-center px-3 sm:px-4 py-4 sm:py-6">
+          <Card className="w-full max-w-md">
+            <CardHeader className="text-center">
+              <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+              <CardTitle>Verificando avaliações</CardTitle>
+              <CardDescription>Estamos conferindo se há atendimento pendente de avaliação.</CardDescription>
+            </CardHeader>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
+  if (pendingFeedbackTickets.length > 0) {
+    return (
+      <div className="min-h-screen bg-background">
+        {renderHeader()}
+        <main className="container px-3 sm:px-4 py-4 sm:py-6">
+          <Card className="mx-auto w-full max-w-2xl border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg sm:text-2xl">
+                <AlertTriangle className="h-5 w-5 text-yellow-600" />
+                Avaliação pendente
+              </CardTitle>
+              <CardDescription>
+                Para abrir um novo ticket, avalie primeiro o atendimento dos chamados resolvidos ou fechados abaixo.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {pendingFeedbackTickets.map((ticket) => (
+                <div key={ticket.id} className="flex flex-col gap-3 rounded-lg border bg-background p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs text-muted-foreground">{ticket.protocolo}</p>
+                    <p className="font-medium">{ticket.titulo}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Status: {ticket.status === 'fechado' ? 'Fechado' : 'Resolvido'}
+                    </p>
+                  </div>
+                  <Link to={`/ticket/${ticket.id}?avaliar=1`}>
+                    <Button className="w-full sm:w-auto">
+                      <Star className="mr-2 h-4 w-4 fill-yellow-300 text-yellow-300" />
+                      Avaliar atendimento
+                    </Button>
+                  </Link>
+                </div>
+              ))}
+              <Button variant="outline" className="w-full" onClick={fetchPendingFeedbackTickets}>
+                Verificar novamente
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur">
-        <div className="container flex h-16 items-center gap-2 sm:gap-4 px-3 sm:px-4">
-          <Link to="/">
-            <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10">
-              <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
-            </Button>
-          </Link>
-          <div className="min-w-0">
-            <h1 className="text-base sm:text-lg font-semibold truncate">Nova Solicitação</h1>
-            <p className="text-xs text-muted-foreground">Descreva seu problema</p>
-          </div>
-        </div>
-      </header>
+      {renderHeader()}
 
       {/* Form */}
       <main className="container px-3 sm:px-4 py-4 sm:py-6">

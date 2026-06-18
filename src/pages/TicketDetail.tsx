@@ -183,7 +183,7 @@ export default function TicketDetail() {
 
     handledAutoFeedbackRef.current = true;
 
-    if (ticket.status === 'resolvido' && ticket.solicitante?.id === user.id && !hasFeedback) {
+    if ((ticket.status === 'resolvido' || ticket.status === 'fechado') && ticket.solicitante?.id === user.id && !hasFeedback) {
       setShowFeedback(true);
       return;
     }
@@ -192,7 +192,7 @@ export default function TicketDetail() {
       title: hasFeedback ? 'Ticket já avaliado' : 'Avaliação indisponível',
       description: hasFeedback
         ? 'Este atendimento já recebeu uma avaliação.'
-        : 'A avaliação só fica disponível para o solicitante quando o ticket está resolvido.',
+        : 'A avaliação só fica disponível para o solicitante quando o ticket está resolvido ou fechado.',
     });
   }, [feedbackChecked, hasFeedback, searchParams, ticket, toast, user]);
 
@@ -502,7 +502,7 @@ export default function TicketDetail() {
   }
 
   const canSendMessage = ticket.status !== 'fechado';
-  const canEvaluate = ticket.status === 'resolvido' && 
+  const canEvaluate = (ticket.status === 'resolvido' || ticket.status === 'fechado') &&
                       ticket.solicitante?.id === user?.id && 
                       !hasFeedback;
 

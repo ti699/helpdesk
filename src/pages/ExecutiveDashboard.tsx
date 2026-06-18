@@ -26,20 +26,50 @@ type TicketType = 'TI' | 'Manutenção predial';
 
 interface ManagementTicket {
   id: string;
+  protocolo: string;
+  titulo: string;
   status: TicketStatus | null;
   tipo: string | null;
   categoria: string | null;
+  prioridade: string | null;
   setor: string | null;
+  solicitante_id: string | null;
+  solicitante_nome: string;
+  solicitante_funcao: string;
   created_at: string | null;
   resolved_at: string | null;
   closed_at: string | null;
+  feedback_nota: number | null;
 }
 
 interface FeedbackRow {
+  ticket_id: string;
   nota_satisfacao: number | null;
 }
 
+interface RequesterOption {
+  id: string;
+  nome: string;
+}
+
 const unresolvedStatuses: TicketStatus[] = ['aberto', 'em_andamento', 'aguardando_resposta'];
+
+const statusLabels: Record<string, string> = {
+  aberto: 'Aberto',
+  em_andamento: 'Em andamento',
+  aguardando_resposta: 'Aguardando resposta',
+  resolvido: 'Resolvido',
+  fechado: 'Fechado',
+};
+
+const priorityLabels: Record<string, string> = {
+  baixa: 'Baixa',
+  media: 'Média',
+  alta: 'Alta',
+  critica: 'Crítica',
+};
+
+const isValidDateInput = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00`).getTime());
 
 const getDurationMs = (start?: string | null, end?: string | null) => {
   if (!start) return null;
@@ -77,6 +107,14 @@ const averageResolution = (tickets: ManagementTicket[], ticketType: TicketType) 
   return durations.reduce((sum, duration) => sum + duration, 0) / durations.length;
 };
 
+const getTicketTimeLabel = (ticket: ManagementTicket) => {
+  if (ticket.status === 'resolvido' || ticket.status === 'fechado') {
+    return `Resolvido em ${formatDuration(getDurationMs(ticket.created_at, ticket.resolved_at || ticket.closed_at))}`;
+  }
+
+  return `Sem resolução há ${formatDuration(getDurationMs(ticket.created_at))}`;
+};
+
 const countBy = (tickets: ManagementTicket[], key: 'categoria' | 'setor') => {
   const map = new Map<string, number>();
   tickets.forEach((ticket) => {
@@ -96,8 +134,12 @@ export default function ExecutiveDashboard() {
   const [loading, setLoading] = useState(true);
   const [tickets, setTickets] = useState<ManagementTicket[]>([]);
   const [feedbacks, setFeedbacks] = useState<FeedbackRow[]>([]);
+  const [requesterOptions, setRequesterOptions] = useState<RequesterOption[]>([]);
+  const [functionOptions, setFunctionOptions] = useState<string[]>([]);
   const [tipoFilter, setTipoFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [requesterFilter, setRequesterFilter] = useState('all');
+  const [functionFilter, setFunctionFilter] = useState('all');
   const [periodoInicio, setPeriodoInicio] = useState(() => {
     const now = new Date();
     return format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd');
@@ -111,6 +153,21 @@ export default function ExecutiveDashboard() {
   }, [user, authLoading, navigate]);
 
   const hasExecutiveAccess = role === 'admin' || managementReportAccess;
+  const periodValidation = useMemo(() => {
+    if (!periodoInicio || !periodoFim) {
+      return { valid: false, message: 'Informe data inicial e final para consultar o relatório.' };
+    }
+
+    if (!isValidDateInput(periodoInicio) || !isValidDateInput(periodoFim)) {
+      return { valid: false, message: 'Informe datas válidas para consultar o relatório.' };
+    }
+
+    if (new Date(`${periodoInicio}T00:00:00`) > new Date(`${periodoFim}T00:00:00`)) {
+      return { valid: false, message: 'A data inicial não pode ser maior que a data final.' };
+    }
+
+    return { valid: true, message: '' };
+  }, [periodoInicio, periodoFim]);
 
   useEffect(() => {
     if (!authLoading && role && !hasExecutiveAccess) {
@@ -122,14 +179,23 @@ export default function ExecutiveDashboard() {
     if (user && hasExecutiveAccess) {
       fetchManagementData();
     }
-  }, [user, hasExecutiveAccess, tipoFilter, statusFilter, periodoInicio, periodoFim]);
+  }, [user, hasExecutiveAccess, tipoFilter, statusFilter, requesterFilter, functionFilter, periodoInicio, periodoFim]);
 
   const fetchManagementData = async () => {
+    if (!periodValidation.valid) {
+      setTickets([]);
+      setFeedbacks([]);
+      setRequesterOptions([]);
+      setFunctionOptions([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       let ticketQuery = supabase
         .from('tickets')
-        .select('id, status, tipo, categoria, setor, created_at, resolved_at, closed_at')
+        .select('id, protocolo, titulo, status, tipo, categoria, prioridade, setor, solicitante_id, created_at, resolved_at, closed_at')
         .gte('created_at', periodoInicio)
         .lte('created_at', periodoFim + 'T23:59:59')
         .order('created_at', { ascending: false })
@@ -143,21 +209,78 @@ export default function ExecutiveDashboard() {
         ticketQuery = ticketQuery.eq('status', statusFilter);
       }
 
-      const [{ data: ticketData, error: ticketError }, { data: feedbackData, error: feedbackError }] = await Promise.all([
-        ticketQuery,
-        supabase
-          .from('feedbacks')
-          .select('nota_satisfacao')
-          .gte('created_at', periodoInicio)
-          .lte('created_at', periodoFim + 'T23:59:59')
-          .limit(2000),
-      ]);
+      const { data: ticketData, error: ticketError } = await ticketQuery;
 
       if (ticketError) throw ticketError;
-      if (feedbackError) throw feedbackError;
+      const ticketRows = ticketData || [];
+      const ticketIds = ticketRows.map((ticket) => ticket.id);
+      const requesterIds = [...new Set(ticketRows.map((ticket) => ticket.solicitante_id).filter(Boolean))] as string[];
 
-      setTickets((ticketData || []) as ManagementTicket[]);
-      setFeedbacks((feedbackData || []) as FeedbackRow[]);
+      let profileData: Array<{ id: string; nome: string; funcao: string | null }> = [];
+      let feedbackData: FeedbackRow[] = [];
+
+      if (requesterIds.length) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, nome, funcao')
+          .in('id', requesterIds);
+
+        if (error) throw error;
+        profileData = data || [];
+      }
+
+      if (ticketIds.length) {
+        const { data, error } = await supabase
+          .from('feedbacks')
+          .select('ticket_id, nota_satisfacao')
+          .in('ticket_id', ticketIds);
+
+        if (error) throw error;
+        feedbackData = (data || []) as FeedbackRow[];
+      }
+
+      const profilesById = new Map(
+        (profileData || []).map((profile) => [
+          profile.id,
+          {
+            nome: profile.nome || 'Não informado',
+            funcao: profile.funcao || 'Não informado',
+          },
+        ]),
+      );
+      const feedbackByTicketId = new Map((feedbackData || []).map((feedback) => [feedback.ticket_id, feedback.nota_satisfacao || null]));
+
+      const enrichedTickets = ticketRows.map((ticket) => {
+        const requester = ticket.solicitante_id ? profilesById.get(ticket.solicitante_id) : null;
+        return {
+          ...ticket,
+          solicitante_nome: requester?.nome || 'Não informado',
+          solicitante_funcao: requester?.funcao || 'Não informado',
+          feedback_nota: feedbackByTicketId.get(ticket.id) || null,
+        };
+      }) as ManagementTicket[];
+
+      const nextRequesterOptions = [...new Map(
+        enrichedTickets
+          .filter((ticket) => ticket.solicitante_id)
+          .map((ticket) => [ticket.solicitante_id as string, { id: ticket.solicitante_id as string, nome: ticket.solicitante_nome }]),
+      ).values()].sort((a, b) => a.nome.localeCompare(b.nome));
+      const nextFunctionOptions = [...new Set(enrichedTickets.map((ticket) => ticket.solicitante_funcao).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b));
+
+      setRequesterOptions(nextRequesterOptions);
+      setFunctionOptions(nextFunctionOptions);
+
+      const filteredTickets = enrichedTickets.filter((ticket) => {
+        const matchesRequester = requesterFilter === 'all' || ticket.solicitante_id === requesterFilter;
+        const matchesFunction = functionFilter === 'all' || ticket.solicitante_funcao === functionFilter;
+        return matchesRequester && matchesFunction;
+      });
+
+      setTickets(filteredTickets);
+      setFeedbacks(filteredTickets
+        .filter((ticket) => ticket.feedback_nota)
+        .map((ticket) => ({ ticket_id: ticket.id, nota_satisfacao: ticket.feedback_nota })));
     } catch (error) {
       console.error('Erro ao carregar dashboard executivo:', error);
     } finally {
@@ -206,6 +329,8 @@ export default function ExecutiveDashboard() {
   ];
 
   const handleExportPDF = () => {
+    if (!periodValidation.valid) return;
+
     const doc = new jsPDF();
     const generatedAt = format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
     const areaLabel = tipoFilter === 'all' ? 'Todas' : tipoFilter === 'Manutenção predial' ? 'Manutenção' : tipoFilter;
@@ -267,6 +392,31 @@ export default function ExecutiveDashboard() {
       headStyles: { fillColor: [51, 65, 85] },
     });
 
+    autoTable(doc, {
+      startY: (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10,
+      head: [['Protocolo', 'Título', 'Área', 'Status', 'Solicitante', 'Função', 'Abertura', 'Tempo', 'Nota']],
+      body: tickets.length
+        ? tickets.map((ticket) => [
+            ticket.protocolo,
+            ticket.titulo,
+            ticket.tipo || 'Não informado',
+            ticket.status ? statusLabels[ticket.status] || ticket.status : 'Não informado',
+            ticket.solicitante_nome,
+            ticket.solicitante_funcao,
+            ticket.created_at ? format(new Date(ticket.created_at), 'dd/MM/yyyy HH:mm') : 'Sem data',
+            getTicketTimeLabel(ticket),
+            ticket.feedback_nota ? `${ticket.feedback_nota}/5` : '-',
+          ])
+        : [['Sem tickets no período', '-', '-', '-', '-', '-', '-', '-', '-']],
+      styles: { fontSize: 7 },
+      headStyles: { fillColor: [211, 47, 47] },
+      columnStyles: {
+        1: { cellWidth: 34 },
+        4: { cellWidth: 28 },
+        7: { cellWidth: 24 },
+      },
+    });
+
     doc.save(`relatorio-alta-gestao-${format(new Date(), 'yyyy-MM-dd-HHmm')}.pdf`);
   };
 
@@ -305,7 +455,7 @@ export default function ExecutiveDashboard() {
             <Badge variant="outline" className="hidden sm:flex bg-primary/10 text-primary border-primary/20">
               {role === 'admin' ? 'Administrador' : 'Alta Gestão'}
             </Badge>
-            <Button variant="outline" size="sm" onClick={handleExportPDF} className="hidden sm:flex">
+            <Button variant="outline" size="sm" onClick={handleExportPDF} disabled={!periodValidation.valid} className="hidden sm:flex">
               <Download className="mr-2 h-4 w-4" />
               Exportar PDF
             </Button>
@@ -324,14 +474,14 @@ export default function ExecutiveDashboard() {
                 <BarChart3 className="h-5 w-5" />
                 Filtros executivos
               </CardTitle>
-              <Button variant="outline" size="sm" onClick={handleExportPDF} className="sm:hidden">
+              <Button variant="outline" size="sm" onClick={handleExportPDF} disabled={!periodValidation.valid} className="sm:hidden">
                 <Download className="mr-2 h-4 w-4" />
                 Exportar PDF
               </Button>
             </div>
             <CardDescription>Indicadores calculados pelo período de abertura dos tickets.</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
             <div className="space-y-2">
               <Label>Início</Label>
               <Input type="date" value={periodoInicio} onChange={(event) => setPeriodoInicio(event.target.value)} />
@@ -365,6 +515,39 @@ export default function ExecutiveDashboard() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label>Solicitante</Label>
+              <Select value={requesterFilter} onValueChange={setRequesterFilter}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {requesterOptions.map((requester) => (
+                    <SelectItem key={requester.id} value={requester.id}>
+                      {requester.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Função</Label>
+              <Select value={functionFilter} onValueChange={setFunctionFilter}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {functionOptions.map((funcao) => (
+                    <SelectItem key={funcao} value={funcao}>
+                      {funcao}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {!periodValidation.valid && (
+              <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-900 dark:bg-yellow-950/20 dark:text-yellow-200 sm:col-span-2 lg:col-span-6">
+                {periodValidation.message}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -424,6 +607,63 @@ export default function ExecutiveDashboard() {
           <RankingTable title="Categorias com mais chamados" rows={stats.categorias} total={stats.total} />
           <RankingTable title="Setores solicitantes" rows={stats.setores} total={stats.total} />
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Tickets do período filtrado</CardTitle>
+            <CardDescription>Relação detalhada conforme os filtros selecionados.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Protocolo</TableHead>
+                    <TableHead>Título</TableHead>
+                    <TableHead>Área</TableHead>
+                    <TableHead>Categoria</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Prioridade</TableHead>
+                    <TableHead>Solicitante</TableHead>
+                    <TableHead>Função</TableHead>
+                    <TableHead>Setor</TableHead>
+                    <TableHead>Abertura</TableHead>
+                    <TableHead>Tempo</TableHead>
+                    <TableHead className="text-right">Nota</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {tickets.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={12} className="text-center text-muted-foreground">
+                        {periodValidation.valid ? 'Sem tickets para os filtros selecionados' : 'Ajuste o período para consultar'}
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    tickets.map((ticket) => (
+                      <TableRow key={ticket.id}>
+                        <TableCell className="font-mono text-xs">{ticket.protocolo}</TableCell>
+                        <TableCell className="min-w-48 font-medium">{ticket.titulo}</TableCell>
+                        <TableCell>{ticket.tipo || 'Não informado'}</TableCell>
+                        <TableCell>{ticket.categoria || 'Não informado'}</TableCell>
+                        <TableCell>{ticket.status ? statusLabels[ticket.status] || ticket.status : 'Não informado'}</TableCell>
+                        <TableCell>{ticket.prioridade ? priorityLabels[ticket.prioridade] || ticket.prioridade : 'Não informado'}</TableCell>
+                        <TableCell className="min-w-40">{ticket.solicitante_nome}</TableCell>
+                        <TableCell>{ticket.solicitante_funcao}</TableCell>
+                        <TableCell>{ticket.setor || 'Não informado'}</TableCell>
+                        <TableCell>
+                          {ticket.created_at ? format(new Date(ticket.created_at), 'dd/MM/yyyy HH:mm') : 'Sem data'}
+                        </TableCell>
+                        <TableCell className="min-w-36">{getTicketTimeLabel(ticket)}</TableCell>
+                        <TableCell className="text-right">{ticket.feedback_nota ? `${ticket.feedback_nota}/5` : '-'}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
 
         <p className="text-xs text-muted-foreground">
           Atualizado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}.
