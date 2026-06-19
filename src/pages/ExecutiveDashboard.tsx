@@ -1,21 +1,19 @@
-import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ArrowLeft, BarChart3, Clock, Download, Loader2, Star, Ticket, TriangleAlert } from 'lucide-react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { ArrowLeft, BarChart3, Clock, FileText, Loader2, Star, Ticket, TriangleAlert } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { AccountMenu } from '@/components/AccountMenu';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { SlimMetricCard } from '@/components/reports/SlimMetricCard';
+import { StatusMultiSelect } from '@/components/reports/StatusMultiSelect';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
@@ -183,16 +181,6 @@ export default function ExecutiveDashboard() {
     }
   }, [user, hasExecutiveAccess, tipoFilter, statusFilters, requesterFilter, functionFilter, periodoInicio, periodoFim]);
 
-  const toggleStatusFilter = (status: TicketStatus, checked: boolean) => {
-    setStatusFilters((current) => {
-      if (checked) {
-        return current.includes(status) ? current : [...current, status];
-      }
-
-      return current.filter((item) => item !== status);
-    });
-  };
-
   const fetchManagementData = async () => {
     if (!periodValidation.valid) {
       setTickets([]);
@@ -341,98 +329,17 @@ export default function ExecutiveDashboard() {
     },
   ];
 
-  const handleExportPDF = () => {
-    if (!periodValidation.valid) return;
+  const handleGenerateReport = () => {
+    const params = new URLSearchParams();
 
-    const doc = new jsPDF();
-    const generatedAt = format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
-    const areaLabel = tipoFilter === 'all' ? 'Todas' : tipoFilter === 'Manutenção predial' ? 'Manutenção' : tipoFilter;
-    const statusLabel = statusFilters.length === 0
-      ? 'Todos'
-      : statusFilters.map((status) => statusLabels[status]).join(', ');
+    if (periodoInicio) params.set('periodoInicio', periodoInicio);
+    if (periodoFim) params.set('periodoFim', periodoFim);
+    if (tipoFilter !== 'all') params.set('tipo', tipoFilter);
+    if (statusFilters.length > 0) params.set('status', statusFilters.join(','));
+    if (requesterFilter !== 'all') params.set('requester', requesterFilter);
+    if (functionFilter !== 'all') params.set('funcao', functionFilter);
 
-    doc.setFontSize(16);
-    doc.text('Relatório Alta Gestão - Help Desk Astrotur', 14, 18);
-    doc.setFontSize(10);
-    doc.text(`Emitido em ${generatedAt}`, 14, 26);
-    doc.text(`Período: ${format(new Date(periodoInicio), 'dd/MM/yyyy')} até ${format(new Date(periodoFim), 'dd/MM/yyyy')}`, 14, 32);
-    doc.text(`Área: ${areaLabel} | Status: ${statusLabel}`, 14, 38);
-
-    autoTable(doc, {
-      startY: 46,
-      head: [['Indicador', 'Valor']],
-      body: [
-        ['Total de tickets', stats.total],
-        ['Abertos', stats.abertos],
-        ['Em atendimento', stats.emAtendimento],
-        ['Resolvidos', stats.resolvidos],
-        ['Fechados', stats.fechados],
-        ['Sem resolução', stats.semResolucao],
-        ['Atrasados', stats.atrasados],
-        ['Satisfação média', `${stats.satisfacaoMedia || 0}/5`],
-        ['Tempo médio TI', formatDuration(stats.mediaTi)],
-        ['Tempo médio Manutenção', formatDuration(stats.mediaManutencao)],
-      ],
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [211, 47, 47] },
-    });
-
-    autoTable(doc, {
-      startY: (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY
-        ? (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10
-        : 120,
-      head: [['Área', 'Total', 'Atrasados']],
-      body: areaData.map((area) => [area.area, area.total, area.atrasados]),
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [37, 99, 235] },
-    });
-
-    autoTable(doc, {
-      startY: (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10,
-      head: [['Ranking por categoria', 'Quantidade']],
-      body: stats.categorias.length
-        ? stats.categorias.map((row) => [row.label, row.count])
-        : [['Sem dados no período', 0]],
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [51, 65, 85] },
-    });
-
-    autoTable(doc, {
-      startY: (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10,
-      head: [['Ranking por setor solicitante', 'Quantidade']],
-      body: stats.setores.length
-        ? stats.setores.map((row) => [row.label, row.count])
-        : [['Sem dados no período', 0]],
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [51, 65, 85] },
-    });
-
-    autoTable(doc, {
-      startY: (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10,
-      head: [['Protocolo', 'Título', 'Área', 'Status', 'Solicitante', 'Função', 'Abertura', 'Tempo', 'Nota']],
-      body: tickets.length
-        ? tickets.map((ticket) => [
-            ticket.protocolo,
-            ticket.titulo,
-            ticket.tipo || 'Não informado',
-            ticket.status ? statusLabels[ticket.status] || ticket.status : 'Não informado',
-            ticket.solicitante_nome,
-            ticket.solicitante_funcao,
-            ticket.created_at ? format(new Date(ticket.created_at), 'dd/MM/yyyy HH:mm') : 'Sem data',
-            getTicketTimeLabel(ticket),
-            ticket.feedback_nota ? `${ticket.feedback_nota}/5` : '-',
-          ])
-        : [['Sem tickets no período', '-', '-', '-', '-', '-', '-', '-', '-']],
-      styles: { fontSize: 7 },
-      headStyles: { fillColor: [211, 47, 47] },
-      columnStyles: {
-        1: { cellWidth: 34 },
-        4: { cellWidth: 28 },
-        7: { cellWidth: 24 },
-      },
-    });
-
-    doc.save(`relatorio-alta-gestao-${format(new Date(), 'yyyy-MM-dd-HHmm')}.pdf`);
+    navigate(`/relatorios/gestao${params.toString() ? `?${params.toString()}` : ''}`);
   };
 
   if (authLoading || (loading && !hasLoadedOnce)) {
@@ -470,9 +377,9 @@ export default function ExecutiveDashboard() {
             <Badge variant="outline" className="hidden sm:flex bg-primary/10 text-primary border-primary/20">
               {role === 'admin' ? 'Administrador' : 'Alta Gestão'}
             </Badge>
-            <Button variant="outline" size="sm" onClick={handleExportPDF} disabled={!periodValidation.valid} className="hidden sm:flex">
-              <Download className="mr-2 h-4 w-4" />
-              Exportar PDF
+            <Button variant="outline" size="sm" onClick={handleGenerateReport} disabled={!periodValidation.valid} className="hidden sm:flex">
+              <FileText className="mr-2 h-4 w-4" />
+              Gerar Relatório
             </Button>
             <ThemeToggle />
             <NotificationBell />
@@ -489,9 +396,9 @@ export default function ExecutiveDashboard() {
                 <BarChart3 className="h-5 w-5" />
                 Filtros executivos
               </CardTitle>
-              <Button variant="outline" size="sm" onClick={handleExportPDF} disabled={!periodValidation.valid} className="sm:hidden">
-                <Download className="mr-2 h-4 w-4" />
-                Exportar PDF
+              <Button variant="outline" size="sm" onClick={handleGenerateReport} disabled={!periodValidation.valid} className="sm:hidden">
+                <FileText className="mr-2 h-4 w-4" />
+                Gerar Relatório
               </Button>
             </div>
             <CardDescription>Indicadores calculados pelo período de abertura dos tickets.</CardDescription>
@@ -518,29 +425,11 @@ export default function ExecutiveDashboard() {
             </div>
             <div className="space-y-2">
               <Label>Status</Label>
-              <div className="rounded-md border px-3 py-2">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="text-sm text-muted-foreground">
-                    {statusFilters.length === 0 ? 'Todos' : `${statusFilters.length} selecionado${statusFilters.length > 1 ? 's' : ''}`}
-                  </span>
-                  {statusFilters.length > 0 && (
-                    <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setStatusFilters([])}>
-                      Limpar
-                    </Button>
-                  )}
-                </div>
-                <div className="grid gap-2">
-                  {(Object.keys(statusLabels) as TicketStatus[]).map((status) => (
-                    <label key={status} className="flex cursor-pointer items-center gap-2 text-sm">
-                      <Checkbox
-                        checked={statusFilters.includes(status)}
-                        onCheckedChange={(checked) => toggleStatusFilter(status, checked === true)}
-                      />
-                      <span>{statusLabels[status]}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
+              <StatusMultiSelect
+                options={(Object.keys(statusLabels) as TicketStatus[]).map((status) => ({ value: status, label: statusLabels[status] }))}
+                value={statusFilters}
+                onChange={setStatusFilters}
+              />
             </div>
             <div className="space-y-2">
               <Label>Solicitante</Label>
@@ -585,17 +474,17 @@ export default function ExecutiveDashboard() {
         </Card>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard title="Tickets no período" value={stats.total} icon={<Ticket className="h-4 w-4" />} />
-          <MetricCard title="Sem resolução" value={stats.semResolucao} icon={<Clock className="h-4 w-4" />} />
-          <MetricCard title="Atrasados" value={stats.atrasados} icon={<TriangleAlert className="h-4 w-4" />} tone="danger" />
-          <MetricCard title="Satisfação média" value={`${stats.satisfacaoMedia || '0'}/5`} icon={<Star className="h-4 w-4" />} tone="warning" />
+          <SlimMetricCard title="Tickets no período" value={stats.total} icon={<Ticket className="h-4 w-4" />} />
+          <SlimMetricCard title="Sem resolução" value={stats.semResolucao} icon={<Clock className="h-4 w-4" />} />
+          <SlimMetricCard title="Atrasados" value={stats.atrasados} icon={<TriangleAlert className="h-4 w-4" />} tone="danger" />
+          <SlimMetricCard title="Satisfação média" value={`${stats.satisfacaoMedia || '0'}/5`} icon={<Star className="h-4 w-4" />} tone="warning" />
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard title="Abertos" value={stats.abertos} icon={<Ticket className="h-4 w-4" />} />
-          <MetricCard title="Em atendimento" value={stats.emAtendimento} icon={<Clock className="h-4 w-4" />} />
-          <MetricCard title="Resolvidos" value={stats.resolvidos} icon={<Ticket className="h-4 w-4" />} />
-          <MetricCard title="Fechados" value={stats.fechados} icon={<Ticket className="h-4 w-4" />} />
+          <SlimMetricCard title="Abertos" value={stats.abertos} icon={<Ticket className="h-4 w-4" />} />
+          <SlimMetricCard title="Em atendimento" value={stats.emAtendimento} icon={<Clock className="h-4 w-4" />} />
+          <SlimMetricCard title="Resolvidos" value={stats.resolvidos} icon={<Ticket className="h-4 w-4" />} />
+          <SlimMetricCard title="Fechados" value={stats.fechados} icon={<Ticket className="h-4 w-4" />} />
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
@@ -703,32 +592,6 @@ export default function ExecutiveDashboard() {
         </p>
       </main>
     </div>
-  );
-}
-
-function MetricCard({
-  title,
-  value,
-  icon,
-  tone = 'default',
-}: {
-  title: string;
-  value: string | number;
-  icon: ReactNode;
-  tone?: 'default' | 'danger' | 'warning';
-}) {
-  const toneClass = tone === 'danger' ? 'border-l-red-500' : tone === 'warning' ? 'border-l-yellow-500' : 'border-l-primary';
-
-  return (
-    <Card className={`border-l-4 ${toneClass}`}>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardDescription>{title}</CardDescription>
-        <span className="text-muted-foreground">{icon}</span>
-      </CardHeader>
-      <CardContent>
-        <div className="text-3xl font-bold">{value}</div>
-      </CardContent>
-    </Card>
   );
 }
 

@@ -1,55 +1,59 @@
-import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import {
-  ArrowLeft,
-  BarChart3,
-  Clock,
-  Download,
-  FileText,
-  Loader2,
-  Star,
-  Ticket,
-  TriangleAlert,
-} from 'lucide-react';
+import { ArrowLeft, Clock, Download, FileText, Loader2, Star, Ticket, TriangleAlert } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { AccountMenu } from '@/components/AccountMenu';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
-import { ThemeToggle } from '@/components/ThemeToggle';
+import { RankingBlock } from '@/components/reports/RankingBlock';
+import { SlimMetricCard } from '@/components/reports/SlimMetricCard';
 import { StatusMultiSelect } from '@/components/reports/StatusMultiSelect';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  chunk,
+  countByGeneric,
+  formatDuration,
+  formatPriority,
+  getDurationMs,
+  isValidDateInput,
+  normalizePriority,
+  riskColors,
+  sanitizeReportText,
+  statusLabels,
+  statusOptions,
+  truncateReportText,
+  unresolvedStatuses,
+  type RiskLevel,
+  type TicketStatus,
+  type TicketType,
+} from '@/lib/reporting';
 
-type TicketStatus = 'aberto' | 'em_andamento' | 'aguardando_resposta' | 'resolvido' | 'fechado';
-type TicketType = 'TI' | 'Manutenção predial';
-type RiskLevel = 'normal' | 'warning' | 'critical' | 'resolved';
-
-interface ReportTicket {
+interface ManagementReportTicket {
   id: string;
   protocolo: string;
   titulo: string;
   status: TicketStatus | null;
-  prioridade: string | null;
-  setor: string | null;
   tipo: string | null;
   categoria: string | null;
+  prioridade: string | null;
+  setor: string | null;
   solicitante_id: string | null;
+  solicitante_nome: string;
+  solicitante_funcao: string;
   created_at: string | null;
   resolved_at: string | null;
   closed_at: string | null;
-  solicitante_nome: string;
-  solicitante_funcao: string;
   feedback_nota: number | null;
 }
 
@@ -64,65 +68,7 @@ interface FeedbackRow {
   nota_satisfacao: number | null;
 }
 
-const unresolvedStatuses: TicketStatus[] = ['aberto', 'em_andamento', 'aguardando_resposta'];
-
-const statusLabels: Record<TicketStatus, string> = {
-  aberto: 'Aberto',
-  em_andamento: 'Em atendimento',
-  aguardando_resposta: 'Aguardando resposta',
-  resolvido: 'Resolvido',
-  fechado: 'Fechado',
-};
-
-const priorityLabels: Record<string, string> = {
-  baixa: 'Baixa',
-  media: 'Média',
-  média: 'Média',
-  alta: 'Alta',
-  critica: 'Crítica',
-  crítica: 'Crítica',
-};
-
-const riskColors: Record<RiskLevel, string> = {
-  normal: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300',
-  warning: 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300',
-  critical: 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300',
-  resolved: 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-950/30 dark:text-slate-300',
-};
-
-const statusOptions = Object.keys(statusLabels) as TicketStatus[];
-
-const formatDuration = (durationMs: number | null) => {
-  if (durationMs === null) return 'Sem dados';
-  const totalMinutes = Math.max(1, Math.floor(durationMs / 60000));
-  const totalHours = Math.floor(totalMinutes / 60);
-  const days = Math.floor(totalHours / 24);
-  const hours = totalHours % 24;
-  if (totalHours < 1) return `${totalMinutes}min`;
-  if (days < 1) return `${totalHours}h`;
-  return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
-};
-
-const getDurationMs = (start?: string | null, end?: string | null) => {
-  if (!start) return null;
-  const startTime = new Date(start).getTime();
-  const endTime = end ? new Date(end).getTime() : Date.now();
-  if (Number.isNaN(startTime) || Number.isNaN(endTime) || endTime < startTime) return null;
-  return endTime - startTime;
-};
-
-const normalizePriority = (priority?: string | null) => (
-  (priority || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-);
-
-const formatPriority = (priority?: string | null) => priorityLabels[(priority || '').toLowerCase()] || priority || 'Não informada';
-
-const isValidDateInput = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00`).getTime());
-
-const getRiskInfo = (ticket: ReportTicket) => {
+const getRiskInfo = (ticket: ManagementReportTicket) => {
   if (ticket.status === 'resolvido' || ticket.status === 'fechado') {
     return {
       level: 'resolved' as RiskLevel,
@@ -159,7 +105,7 @@ const getRiskInfo = (ticket: ReportTicket) => {
   };
 };
 
-const getTicketTimeLabel = (ticket: ReportTicket) => {
+const getTicketTimeLabel = (ticket: ManagementReportTicket) => {
   if (ticket.status === 'resolvido' || ticket.status === 'fechado') {
     return `Resolvido em ${formatDuration(getDurationMs(ticket.created_at, ticket.resolved_at || ticket.closed_at))}`;
   }
@@ -167,7 +113,7 @@ const getTicketTimeLabel = (ticket: ReportTicket) => {
   return `Sem resolução há ${formatDuration(getDurationMs(ticket.created_at))}`;
 };
 
-const averageResolution = (tickets: ReportTicket[], type: TicketType) => {
+const averageResolution = (tickets: ManagementReportTicket[], type: TicketType) => {
   const durations = tickets
     .filter((ticket) => ticket.tipo === type && ticket.resolved_at)
     .map((ticket) => getDurationMs(ticket.created_at, ticket.resolved_at))
@@ -177,92 +123,14 @@ const averageResolution = (tickets: ReportTicket[], type: TicketType) => {
   return durations.reduce((sum, duration) => sum + duration, 0) / durations.length;
 };
 
-const countBy = (tickets: ReportTicket[], getKey: (ticket: ReportTicket) => string | null | undefined, limit = 8) => {
-  const counts = new Map<string, number>();
-  tickets.forEach((ticket) => {
-    const key = getKey(ticket) || 'Não informado';
-    counts.set(key, (counts.get(key) || 0) + 1);
-  });
-
-  return [...counts.entries()]
-    .map(([label, count]) => ({ label, count, percent: tickets.length ? Math.round((count / tickets.length) * 100) : 0 }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, limit);
-};
-
-const chunk = <T,>(items: T[], size: number) => {
-  const chunks: T[][] = [];
-  for (let index = 0; index < items.length; index += size) {
-    chunks.push(items.slice(index, index + size));
-  }
-  return chunks;
-};
-
-function MetricCard({
-  title,
-  value,
-  description,
-  icon,
-  tone = 'default',
-}: {
-  title: string;
-  value: string | number;
-  description?: string;
-  icon: ReactNode;
-  tone?: 'default' | 'blue' | 'green' | 'warning' | 'danger' | 'muted';
-}) {
-  const tones = {
-    default: 'border-l-slate-500',
-    blue: 'border-l-blue-500',
-    green: 'border-l-emerald-500',
-    warning: 'border-l-amber-500',
-    danger: 'border-l-red-500',
-    muted: 'border-l-slate-400',
-  };
-
-  return (
-    <Card className={`border-l-[3px] ${tones[tone]} shadow-sm`}>
-      <CardHeader className="flex flex-row items-start justify-between space-y-0 px-3 pb-1.5 pt-3">
-        <CardDescription className="truncate text-[11px] font-medium uppercase tracking-wide">{title}</CardDescription>
-        <span className="text-muted-foreground [&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
-      </CardHeader>
-      <CardContent className="px-3 pb-3 pt-0">
-        <div className="truncate text-xl font-bold leading-tight sm:text-2xl">{value}</div>
-        {description && <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{description}</p>}
-      </CardContent>
-    </Card>
-  );
-}
-
-function RankingBlock({ title, rows }: { title: string; rows: Array<{ label: string; count: number; percent: number }> }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {rows.length ? rows.map((row) => (
-          <div key={row.label} className="space-y-1">
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="truncate font-medium">{row.label}</span>
-              <span className="text-muted-foreground">{row.count}</span>
-            </div>
-            <Progress value={row.percent} className="h-2" />
-          </div>
-        )) : (
-          <p className="text-sm text-muted-foreground">Sem dados para exibir.</p>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-export default function TicketReports() {
+export default function ManagementReports() {
   const { user, role, managementReportAccess, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
-  const [tickets, setTickets] = useState<ReportTicket[]>([]);
+  const [tickets, setTickets] = useState<ManagementReportTicket[]>([]);
+  const [requesterOptions, setRequesterOptions] = useState<Array<{ id: string; nome: string }>>([]);
+  const [functionOptions, setFunctionOptions] = useState<string[]>([]);
   const [periodoInicio, setPeriodoInicio] = useState(() => {
     const param = searchParams.get('periodoInicio');
     if (param) return param;
@@ -271,7 +139,8 @@ export default function TicketReports() {
   });
   const [periodoFim, setPeriodoFim] = useState(() => searchParams.get('periodoFim') || format(new Date(), 'yyyy-MM-dd'));
   const [tipoFilter, setTipoFilter] = useState(() => searchParams.get('tipo') || 'all');
-  const [setorFilter, setSetorFilter] = useState(() => searchParams.get('setor') || 'all');
+  const [requesterFilter, setRequesterFilter] = useState(() => searchParams.get('requester') || 'all');
+  const [functionFilter, setFunctionFilter] = useState(() => searchParams.get('funcao') || 'all');
   const [statusFilters, setStatusFilters] = useState<TicketStatus[]>(() => (
     (searchParams.get('status') || '')
       .split(',')
@@ -279,14 +148,7 @@ export default function TicketReports() {
   ));
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
-  const hasReportAccess = role === 'admin' || managementReportAccess || role === 'agente_ti' || role === 'agente_manutencao';
-  const canViewAllSystem = role === 'admin' || managementReportAccess;
-  const forcedTeamType = role === 'agente_ti' && !canViewAllSystem
-    ? 'TI'
-    : role === 'agente_manutencao' && !canViewAllSystem
-      ? 'Manutenção predial'
-      : null;
-
+  const hasReportAccess = role === 'admin' || managementReportAccess;
   const periodValidation = useMemo(() => {
     if (!periodoInicio || !periodoFim) return { valid: false, message: 'Informe data inicial e final.' };
     if (!isValidDateInput(periodoInicio) || !isValidDateInput(periodoFim)) return { valid: false, message: 'Informe datas válidas.' };
@@ -297,22 +159,18 @@ export default function TicketReports() {
   }, [periodoInicio, periodoFim]);
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      navigate('/auth');
-    }
+    if (!authLoading && !user) navigate('/auth');
   }, [user, authLoading, navigate]);
 
   useEffect(() => {
-    if (!authLoading && role && !hasReportAccess) {
-      navigate(role === 'solicitante' ? '/' : '/dashboard');
-    }
-  }, [authLoading, role, hasReportAccess, navigate]);
+    if (!authLoading && role && !hasReportAccess) navigate(role === 'solicitante' ? '/' : '/dashboard');
+  }, [role, hasReportAccess, authLoading, navigate]);
 
   useEffect(() => {
     if (user && hasReportAccess) {
       fetchReportData();
     }
-  }, [user, hasReportAccess, periodoInicio, periodoFim, tipoFilter, setorFilter, statusFilters.join(',')]);
+  }, [user, hasReportAccess, periodoInicio, periodoFim, tipoFilter, statusFilters.join(','), requesterFilter, functionFilter]);
 
   const fetchAllTickets = async () => {
     const pageSize = 1000;
@@ -322,25 +180,14 @@ export default function TicketReports() {
     while (true) {
       let query = supabase
         .from('tickets')
-        .select('id, protocolo, titulo, status, prioridade, setor, tipo, categoria, solicitante_id, created_at, resolved_at, closed_at')
+        .select('id, protocolo, titulo, status, tipo, categoria, prioridade, setor, solicitante_id, created_at, resolved_at, closed_at')
         .gte('created_at', periodoInicio)
         .lte('created_at', `${periodoFim}T23:59:59`)
         .order('created_at', { ascending: false })
         .range(from, from + pageSize - 1);
 
-      if (forcedTeamType) {
-        query = query.eq('tipo', forcedTeamType);
-      } else if (tipoFilter !== 'all') {
-        query = query.eq('tipo', tipoFilter);
-      }
-
-      if (setorFilter !== 'all') {
-        query = query.eq('setor', setorFilter);
-      }
-
-      if (statusFilters.length > 0) {
-        query = query.in('status', statusFilters);
-      }
+      if (tipoFilter !== 'all') query = query.eq('tipo', tipoFilter);
+      if (statusFilters.length > 0) query = query.in('status', statusFilters);
 
       const { data, error } = await query;
       if (error) throw error;
@@ -366,7 +213,6 @@ export default function TicketReports() {
       const ticketRows = await fetchAllTickets();
       const ticketIds = ticketRows.map((ticket) => ticket.id);
       const requesterIds = [...new Set(ticketRows.map((ticket) => ticket.solicitante_id).filter(Boolean))] as string[];
-
       let profiles: ProfileRow[] = [];
       let feedbacks: FeedbackRow[] = [];
 
@@ -393,13 +239,13 @@ export default function TicketReports() {
       const profilesById = new Map(profiles.map((profile) => [
         profile.id,
         {
-          nome: profile.nome || 'Não informado',
-          funcao: profile.funcao || 'Não informado',
+          nome: sanitizeReportText(profile.nome),
+          funcao: sanitizeReportText(profile.funcao),
         },
       ]));
       const feedbackByTicketId = new Map(feedbacks.map((feedback) => [feedback.ticket_id, feedback.nota_satisfacao || null]));
 
-      setTickets(ticketRows.map((ticket) => {
+      const enriched = ticketRows.map((ticket) => {
         const profile = ticket.solicitante_id ? profilesById.get(ticket.solicitante_id) : null;
         return {
           ...ticket,
@@ -407,10 +253,24 @@ export default function TicketReports() {
           solicitante_funcao: profile?.funcao || 'Não informado',
           feedback_nota: feedbackByTicketId.get(ticket.id) || null,
         };
-      }) as ReportTicket[]);
+      }) as ManagementReportTicket[];
+
+      setRequesterOptions([...new Map(
+        enriched
+          .filter((ticket) => ticket.solicitante_id)
+          .map((ticket) => [ticket.solicitante_id as string, { id: ticket.solicitante_id as string, nome: ticket.solicitante_nome }]),
+      ).values()].sort((a, b) => a.nome.localeCompare(b.nome)));
+      setFunctionOptions([...new Set(enriched.map((ticket) => ticket.solicitante_funcao).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b)));
+
+      setTickets(enriched.filter((ticket) => {
+        const matchesRequester = requesterFilter === 'all' || ticket.solicitante_id === requesterFilter;
+        const matchesFunction = functionFilter === 'all' || ticket.solicitante_funcao === functionFilter;
+        return matchesRequester && matchesFunction;
+      }));
       setHasLoadedOnce(true);
     } catch (error) {
-      console.error('Erro ao gerar relatório de tickets:', error);
+      console.error('Erro ao gerar relatório de alta gestão:', error);
     } finally {
       setLoading(false);
     }
@@ -418,7 +278,6 @@ export default function TicketReports() {
 
   const stats = useMemo(() => {
     const total = tickets.length;
-    const unresolved = tickets.filter((ticket) => ticket.status && unresolvedStatuses.includes(ticket.status));
     const riskItems = tickets.map((ticket) => ({ ticket, risk: getRiskInfo(ticket), durationMs: getDurationMs(ticket.created_at) || 0 }));
     const delayed = riskItems.filter((item) => item.risk.level === 'warning' || item.risk.level === 'critical');
     const critical = riskItems.filter((item) => item.risk.level === 'critical');
@@ -434,21 +293,21 @@ export default function TicketReports() {
       abertos: tickets.filter((ticket) => ticket.status === 'aberto').length,
       emAtendimento: tickets.filter((ticket) => ticket.status === 'em_andamento').length,
       aguardando: tickets.filter((ticket) => ticket.status === 'aguardando_resposta').length,
-      resolvidosFechados: tickets.filter((ticket) => ticket.status === 'resolvido' || ticket.status === 'fechado').length,
-      unresolved: unresolved.length,
+      resolvidos: tickets.filter((ticket) => ticket.status === 'resolvido').length,
+      fechados: tickets.filter((ticket) => ticket.status === 'fechado').length,
+      semResolucao: tickets.filter((ticket) => ticket.status && unresolvedStatuses.includes(ticket.status)).length,
       delayed: delayed.length,
       critical: critical.length,
       highPriorityOpen: highPriorityOpen.length,
       satisfaction: Math.round(satisfaction * 10) / 10,
       mediaTi: averageResolution(tickets, 'TI'),
       mediaManutencao: averageResolution(tickets, 'Manutenção predial'),
-      insideSlaPercent: total ? Math.round(((total - delayed.length) / total) * 100) : 0,
-      statusRows: countBy(tickets, (ticket) => ticket.status ? statusLabels[ticket.status] : 'Não informado', 10),
-      priorityRows: countBy(tickets, (ticket) => formatPriority(ticket.prioridade), 10),
-      areaRows: countBy(tickets, (ticket) => ticket.tipo, 10),
-      categoryRows: countBy(tickets, (ticket) => ticket.categoria),
-      sectorRows: countBy(tickets, (ticket) => ticket.setor),
-      requesterRows: countBy(tickets, (ticket) => ticket.solicitante_nome),
+      statusRows: countByGeneric(tickets, (ticket) => ticket.status ? statusLabels[ticket.status] : 'Não informado', 10),
+      priorityRows: countByGeneric(tickets, (ticket) => formatPriority(ticket.prioridade), 10),
+      areaRows: countByGeneric(tickets, (ticket) => ticket.tipo, 10),
+      categoryRows: countByGeneric(tickets, (ticket) => ticket.categoria),
+      sectorRows: countByGeneric(tickets, (ticket) => ticket.setor),
+      requesterRows: countByGeneric(tickets, (ticket) => ticket.solicitante_nome),
       oldestUnresolved: riskItems
         .filter((item) => item.ticket.status && unresolvedStatuses.includes(item.ticket.status))
         .sort((a, b) => b.durationMs - a.durationMs)
@@ -464,7 +323,7 @@ export default function TicketReports() {
     const pageHeight = doc.internal.pageSize.getHeight();
     const marginX = 14;
     const generatedAt = format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
-    const areaLabel = forcedTeamType || (tipoFilter === 'all' ? 'Todo o sistema' : tipoFilter);
+    const areaLabel = tipoFilter === 'all' ? 'Todas' : tipoFilter === 'Manutenção predial' ? 'Manutenção' : tipoFilter;
     const statusLabel = statusFilters.length ? statusFilters.map((status) => statusLabels[status]).join(', ') : 'Todos';
 
     doc.setFillColor(196, 24, 31);
@@ -472,24 +331,23 @@ export default function TicketReports() {
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(18);
-    doc.text('Relatório Operacional de Tickets', marginX, 14);
+    doc.text('Relatório Alta Gestão - Help Desk Astrotur', marginX, 14);
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     doc.text(`Emitido em ${generatedAt} | Área: ${areaLabel} | Status: ${statusLabel}`, marginX, 22);
 
     doc.setTextColor(17, 24, 39);
-    doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.text(`Período: ${format(new Date(`${periodoInicio}T00:00:00`), 'dd/MM/yyyy')} até ${format(new Date(`${periodoFim}T00:00:00`), 'dd/MM/yyyy')}`, marginX, 38);
-    doc.text(`Setor: ${setorFilter === 'all' ? 'Todos' : setorFilter} | Total considerado: ${stats.total}`, marginX, 44);
+    doc.text(`Solicitante: ${requesterFilter === 'all' ? 'Todos' : requesterOptions.find((option) => option.id === requesterFilter)?.nome || 'Selecionado'} | Função: ${functionFilter === 'all' ? 'Todas' : functionFilter}`, marginX, 44);
 
     const summary = [
-      ['Total', stats.total, [31, 41, 55]],
-      ['Abertos', stats.abertos, [249, 115, 22]],
-      ['Em atendimento', stats.emAtendimento, [37, 99, 235]],
-      ['Aguardando', stats.aguardando, [217, 119, 6]],
-      ['Resolvidos/fechados', stats.resolvidosFechados, [22, 163, 74]],
+      ['Tickets', stats.total, [31, 41, 55]],
+      ['Sem resolução', stats.semResolucao, [37, 99, 235]],
       ['Atrasados', stats.delayed, [220, 38, 38]],
+      ['Alta/Crítica', stats.highPriorityOpen, [239, 68, 68]],
+      ['Satisfação', `${stats.satisfaction || 0}/5`, [217, 119, 6]],
+      ['Críticos SLA', stats.critical, [185, 28, 28]],
     ] as Array<[string, string | number, [number, number, number]]>;
 
     const cardWidth = (pageWidth - marginX * 2 - 10) / 6;
@@ -498,29 +356,30 @@ export default function TicketReports() {
       const y = 54;
       doc.setDrawColor(226, 232, 240);
       doc.setFillColor(248, 250, 252);
-      doc.roundedRect(x, y, cardWidth, 24, 2, 2, 'FD');
+      doc.roundedRect(x, y, cardWidth, 22, 2, 2, 'FD');
       doc.setFillColor(color[0], color[1], color[2]);
-      doc.rect(x, y, cardWidth, 3, 'F');
+      doc.rect(x, y, cardWidth, 2.6, 'F');
       doc.setTextColor(71, 85, 105);
       doc.setFontSize(8);
-      doc.text(label, x + 3, y + 10, { maxWidth: cardWidth - 6 });
+      doc.text(label, x + 3, y + 9, { maxWidth: cardWidth - 6 });
       doc.setTextColor(15, 23, 42);
-      doc.setFontSize(15);
+      doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
-      doc.text(String(value), x + 3, y + 20);
+      doc.text(String(value), x + 3, y + 18);
       doc.setFont('helvetica', 'normal');
     });
 
     autoTable(doc, {
-      startY: 88,
+      startY: 84,
       head: [['Indicador complementar', 'Valor']],
       body: [
-        ['Alta/Crítica abertas', stats.highPriorityOpen],
-        ['Críticos por SLA', stats.critical],
-        ['Dentro do SLA', `${stats.insideSlaPercent}%`],
-        ['Satisfação média', `${stats.satisfaction || 0}/5`],
-        ['Média TI', formatDuration(stats.mediaTi)],
-        ['Média Manutenção', formatDuration(stats.mediaManutencao)],
+        ['Abertos', stats.abertos],
+        ['Em atendimento', stats.emAtendimento],
+        ['Aguardando resposta', stats.aguardando],
+        ['Resolvidos', stats.resolvidos],
+        ['Fechados', stats.fechados],
+        ['Tempo médio TI', formatDuration(stats.mediaTi)],
+        ['Tempo médio Manutenção', formatDuration(stats.mediaManutencao)],
       ],
       tableWidth: 82,
       margin: { left: marginX },
@@ -529,7 +388,7 @@ export default function TicketReports() {
     });
 
     autoTable(doc, {
-      startY: 88,
+      startY: 84,
       head: [['Status', 'Qtd.', '%']],
       body: stats.statusRows.map((row) => [row.label, row.count, `${row.percent}%`]),
       tableWidth: 60,
@@ -539,23 +398,23 @@ export default function TicketReports() {
     });
 
     autoTable(doc, {
-      startY: 88,
-      head: [['Prioridade', 'Qtd.', '%']],
-      body: stats.priorityRows.map((row) => [row.label, row.count, `${row.percent}%`]),
+      startY: 84,
+      head: [['Área', 'Qtd.', '%']],
+      body: stats.areaRows.map((row) => [row.label, row.count, `${row.percent}%`]),
       tableWidth: 60,
       margin: { left: marginX + 156 },
       styles: { fontSize: 8, cellPadding: 2 },
-      headStyles: { fillColor: [220, 38, 38] },
+      headStyles: { fillColor: [22, 163, 74] },
     });
 
     autoTable(doc, {
-      startY: 88,
-      head: [['Área', 'Qtd.', '%']],
-      body: stats.areaRows.map((row) => [row.label, row.count, `${row.percent}%`]),
+      startY: 84,
+      head: [['Prioridade', 'Qtd.', '%']],
+      body: stats.priorityRows.map((row) => [row.label, row.count, `${row.percent}%`]),
       tableWidth: 58,
       margin: { left: marginX + 222 },
       styles: { fontSize: 8, cellPadding: 2 },
-      headStyles: { fillColor: [22, 163, 74] },
+      headStyles: { fillColor: [220, 38, 38] },
     });
 
     doc.addPage();
@@ -569,9 +428,9 @@ export default function TicketReports() {
       head: [['Protocolo', 'Título', 'Área', 'Prioridade', 'Sinalização']],
       body: stats.oldestUnresolved.length
         ? stats.oldestUnresolved.map(({ ticket, risk }) => [
-            ticket.protocolo,
-            ticket.titulo,
-            ticket.tipo || 'Não informado',
+            sanitizeReportText(ticket.protocolo),
+            truncateReportText(ticket.titulo, 70),
+            sanitizeReportText(ticket.tipo),
             formatPriority(ticket.prioridade),
             risk.label,
           ])
@@ -620,42 +479,46 @@ export default function TicketReports() {
 
     autoTable(doc, {
       startY: 26,
-      head: [['Protocolo', 'Título', 'Status', 'Prioridade', 'Área', 'Categoria', 'Setor', 'Solicitante', 'Abertura', 'Tempo', 'Sinalização']],
+      head: [['Protocolo', 'Título', 'Status', 'Prioridade', 'Área', 'Categoria', 'Setor', 'Solicitante', 'Função', 'Abertura', 'Tempo', 'Nota', 'Sinalização']],
       body: tickets.length
         ? tickets.map((ticket) => {
             const risk = getRiskInfo(ticket);
             return [
-              ticket.protocolo,
-              ticket.titulo,
+              sanitizeReportText(ticket.protocolo),
+              truncateReportText(ticket.titulo, 55),
               ticket.status ? statusLabels[ticket.status] : 'Não informado',
               formatPriority(ticket.prioridade),
-              ticket.tipo || 'Não informado',
-              ticket.categoria || 'Não informado',
-              ticket.setor || 'Não informado',
-              ticket.solicitante_nome,
+              sanitizeReportText(ticket.tipo),
+              truncateReportText(ticket.categoria, 30),
+              truncateReportText(ticket.setor, 28),
+              truncateReportText(ticket.solicitante_nome, 34),
+              truncateReportText(ticket.solicitante_funcao, 26),
               ticket.created_at ? format(new Date(ticket.created_at), 'dd/MM/yyyy HH:mm') : 'Sem data',
               getTicketTimeLabel(ticket),
+              ticket.feedback_nota ? `${ticket.feedback_nota}/5` : '-',
               risk.label,
             ];
           })
-        : [['Sem tickets no filtro atual', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-']],
-      styles: { fontSize: 7, cellPadding: 1.6, overflow: 'linebreak' },
-      headStyles: { fillColor: [196, 24, 31], fontSize: 7 },
+        : [['Sem tickets no filtro atual', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-']],
+      styles: { fontSize: 6.5, cellPadding: 1.3, overflow: 'linebreak' },
+      headStyles: { fillColor: [196, 24, 31], fontSize: 6.5 },
       columnStyles: {
-        0: { cellWidth: 20 },
-        1: { cellWidth: 42 },
-        2: { cellWidth: 23 },
-        3: { cellWidth: 20 },
-        4: { cellWidth: 26 },
-        5: { cellWidth: 26 },
-        6: { cellWidth: 25 },
-        7: { cellWidth: 34 },
-        8: { cellWidth: 25 },
-        9: { cellWidth: 28 },
-        10: { cellWidth: 28 },
+        0: { cellWidth: 18 },
+        1: { cellWidth: 34 },
+        2: { cellWidth: 22 },
+        3: { cellWidth: 18 },
+        4: { cellWidth: 22 },
+        5: { cellWidth: 22 },
+        6: { cellWidth: 21 },
+        7: { cellWidth: 26 },
+        8: { cellWidth: 21 },
+        9: { cellWidth: 22 },
+        10: { cellWidth: 26 },
+        11: { cellWidth: 12 },
+        12: { cellWidth: 27 },
       },
       didParseCell: (data) => {
-        if (data.section !== 'body' || data.column.index !== 10) return;
+        if (data.section !== 'body' || data.column.index !== 12) return;
         const ticket = tickets[data.row.index];
         if (!ticket) return;
         const risk = getRiskInfo(ticket);
@@ -673,7 +536,7 @@ export default function TicketReports() {
       doc.text(`Página ${page} de ${pageCount}`, pageWidth - marginX, pageHeight - 8, { align: 'right' });
     }
 
-    doc.save(`relatorio-operacional-tickets-${format(new Date(), 'yyyy-MM-dd-HHmm')}.pdf`);
+    doc.save(`relatorio-alta-gestao-${format(new Date(), 'yyyy-MM-dd-HHmm')}.pdf`);
   };
 
   if (authLoading || (loading && !hasLoadedOnce)) {
@@ -691,7 +554,7 @@ export default function TicketReports() {
       <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
         <div className="container flex h-16 items-center justify-between px-3 sm:px-4">
           <div className="flex min-w-0 items-center gap-2 sm:gap-4">
-            <Link to="/dashboard">
+            <Link to="/gestao">
               <Button variant="ghost" size="icon">
                 <ArrowLeft className="h-5 w-5" />
               </Button>
@@ -702,14 +565,14 @@ export default function TicketReports() {
               className="h-8 object-contain sm:h-10"
             />
             <div className="hidden sm:block">
-              <h1 className="text-lg font-semibold">Relatório de Tickets</h1>
-              <p className="text-xs text-muted-foreground">Prévia operacional antes da exportação</p>
+              <h1 className="text-lg font-semibold">Relatório Alta Gestão</h1>
+              <p className="text-xs text-muted-foreground">Prévia executiva antes da exportação</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="hidden sm:flex">
-              {canViewAllSystem ? 'Todo o sistema' : forcedTeamType === 'Manutenção predial' ? 'Manutenção' : 'TI'}
+            <Badge variant="outline" className="hidden sm:flex bg-primary/10 text-primary border-primary/20">
+              {role === 'admin' ? 'Administrador' : 'Alta Gestão'}
             </Badge>
             <Button size="sm" onClick={exportPDF} disabled={!periodValidation.valid || loading}>
               <Download className="mr-2 h-4 w-4" />
@@ -730,7 +593,7 @@ export default function TicketReports() {
               Parâmetros do relatório
             </CardTitle>
             <CardDescription className="text-xs">
-              A prévia abaixo usa os mesmos dados que serão exportados no PDF.
+              O PDF usa exatamente os filtros e indicadores exibidos nesta prévia.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-6">
@@ -744,20 +607,16 @@ export default function TicketReports() {
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Área</Label>
-              <Select value={forcedTeamType || tipoFilter} onValueChange={setTipoFilter} disabled={!!forcedTeamType}>
+              <Select value={tipoFilter} onValueChange={setTipoFilter}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todo o sistema</SelectItem>
+                  <SelectItem value="all">Todas</SelectItem>
                   <SelectItem value="TI">TI</SelectItem>
                   <SelectItem value="Manutenção predial">Manutenção</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Setor</Label>
-              <Input className="h-9" value={setorFilter === 'all' ? '' : setorFilter} onChange={(event) => setSetorFilter(event.target.value || 'all')} placeholder="Todos" />
-            </div>
-            <div className="space-y-1 lg:col-span-2">
               <Label className="text-xs">Status</Label>
               <StatusMultiSelect
                 options={statusOptions.map((status) => ({ value: status, label: statusLabels[status] }))}
@@ -765,6 +624,30 @@ export default function TicketReports() {
                 onChange={setStatusFilters}
                 triggerClassName="h-9"
               />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Solicitante</Label>
+              <Select value={requesterFilter} onValueChange={setRequesterFilter}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {requesterOptions.map((requester) => (
+                    <SelectItem key={requester.id} value={requester.id}>{requester.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Função</Label>
+              <Select value={functionFilter} onValueChange={setFunctionFilter}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {functionOptions.map((funcao) => (
+                    <SelectItem key={funcao} value={funcao}>{funcao}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             {!periodValidation.valid && (
               <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/20 dark:text-amber-200 sm:col-span-2 lg:col-span-6">
@@ -781,20 +664,21 @@ export default function TicketReports() {
         </Card>
 
         <section className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
-          <MetricCard title="Total" value={stats.total} description="tickets no filtro" icon={<Ticket className="h-4 w-4" />} />
-          <MetricCard title="Abertos" value={stats.abertos} description="ainda não iniciados" icon={<Ticket className="h-4 w-4" />} tone="warning" />
-          <MetricCard title="Em atendimento" value={stats.emAtendimento} description="em execução" icon={<Clock className="h-4 w-4" />} tone="blue" />
-          <MetricCard title="Aguardando" value={stats.aguardando} description="dependem de retorno" icon={<Clock className="h-4 w-4" />} tone="warning" />
-          <MetricCard title="Resolvidos/fechados" value={stats.resolvidosFechados} description="tratados" icon={<Ticket className="h-4 w-4" />} tone="green" />
-          <MetricCard title="Atrasados" value={stats.delayed} description="atenção ou crítico" icon={<TriangleAlert className="h-4 w-4" />} tone="danger" />
+          <SlimMetricCard title="Tickets" value={stats.total} description="no período" icon={<Ticket className="h-4 w-4" />} />
+          <SlimMetricCard title="Sem resolução" value={stats.semResolucao} icon={<Clock className="h-4 w-4" />} tone="blue" />
+          <SlimMetricCard title="Atrasados" value={stats.delayed} icon={<TriangleAlert className="h-4 w-4" />} tone="danger" />
+          <SlimMetricCard title="Alta/Crítica" value={stats.highPriorityOpen} description="abertas" icon={<TriangleAlert className="h-4 w-4" />} tone="danger" />
+          <SlimMetricCard title="Satisfação" value={`${stats.satisfaction || 0}/5`} icon={<Star className="h-4 w-4" />} tone="warning" />
+          <SlimMetricCard title="Críticos SLA" value={stats.critical} icon={<TriangleAlert className="h-4 w-4" />} tone="danger" />
         </section>
 
-        <section className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
-          <MetricCard title="Alta/Crítica abertas" value={stats.highPriorityOpen} icon={<TriangleAlert className="h-4 w-4" />} tone="danger" />
-          <MetricCard title="Críticos por SLA" value={stats.critical} icon={<TriangleAlert className="h-4 w-4" />} tone="danger" />
-          <MetricCard title="Dentro do SLA" value={`${stats.insideSlaPercent}%`} icon={<BarChart3 className="h-4 w-4" />} tone="green" />
-          <MetricCard title="Satisfação média" value={`${stats.satisfaction || 0}/5`} icon={<Star className="h-4 w-4" />} tone="warning" />
-          <MetricCard title="Médias" value={`${formatDuration(stats.mediaTi)} / ${formatDuration(stats.mediaManutencao)}`} description="TI / Manutenção" icon={<Clock className="h-4 w-4" />} tone="blue" />
+        <section className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          <SlimMetricCard title="Abertos" value={stats.abertos} icon={<Ticket className="h-4 w-4" />} tone="warning" />
+          <SlimMetricCard title="Em atendimento" value={stats.emAtendimento} icon={<Clock className="h-4 w-4" />} tone="blue" />
+          <SlimMetricCard title="Aguardando" value={stats.aguardando} icon={<Clock className="h-4 w-4" />} tone="warning" />
+          <SlimMetricCard title="Resolvidos" value={stats.resolvidos} icon={<Ticket className="h-4 w-4" />} tone="green" />
+          <SlimMetricCard title="Fechados" value={stats.fechados} icon={<Ticket className="h-4 w-4" />} tone="muted" />
+          <SlimMetricCard title="Médias" value={`${formatDuration(stats.mediaTi)} / ${formatDuration(stats.mediaManutencao)}`} description="TI / Manutenção" icon={<Clock className="h-4 w-4" />} tone="blue" />
         </section>
 
         <section className="grid gap-4 lg:grid-cols-3">
@@ -811,8 +695,8 @@ export default function TicketReports() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Sinalização de problemas</CardTitle>
-            <CardDescription>Tickets sem resolução mais antigos no filtro atual.</CardDescription>
+            <CardTitle>Sinalização executiva</CardTitle>
+            <CardDescription>Tickets sem resolução mais antigos dentro dos filtros aplicados.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {stats.oldestUnresolved.length ? stats.oldestUnresolved.map(({ ticket, risk }) => (
@@ -824,9 +708,7 @@ export default function TicketReports() {
                       {ticket.tipo || 'Sem área'} • {formatPriority(ticket.prioridade)} • {ticket.solicitante_nome}
                     </p>
                   </div>
-                  <Badge variant="outline" className="w-fit bg-background/70">
-                    {risk.label}
-                  </Badge>
+                  <Badge variant="outline" className="w-fit bg-background/70">{risk.label}</Badge>
                 </div>
               </div>
             )) : (
@@ -837,7 +719,7 @@ export default function TicketReports() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Relação detalhada</CardTitle>
+            <CardTitle>Tickets do período filtrado</CardTitle>
             <CardDescription>{tickets.length} ticket(s) considerados neste relatório.</CardDescription>
           </CardHeader>
           <CardContent className="overflow-x-auto">
@@ -846,12 +728,15 @@ export default function TicketReports() {
                 <TableRow>
                   <TableHead>Protocolo</TableHead>
                   <TableHead>Título</TableHead>
+                  <TableHead>Área</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Prioridade</TableHead>
-                  <TableHead>Área</TableHead>
                   <TableHead>Solicitante</TableHead>
+                  <TableHead>Função</TableHead>
+                  <TableHead>Setor</TableHead>
                   <TableHead>Abertura</TableHead>
                   <TableHead>Tempo</TableHead>
+                  <TableHead>Nota</TableHead>
                   <TableHead>Sinalização</TableHead>
                 </TableRow>
               </TableHeader>
@@ -862,22 +747,23 @@ export default function TicketReports() {
                     <TableRow key={ticket.id}>
                       <TableCell className="font-medium">{ticket.protocolo}</TableCell>
                       <TableCell className="min-w-[220px]">{ticket.titulo}</TableCell>
+                      <TableCell>{ticket.tipo || 'Não informado'}</TableCell>
                       <TableCell>{ticket.status ? statusLabels[ticket.status] : 'Não informado'}</TableCell>
                       <TableCell>{formatPriority(ticket.prioridade)}</TableCell>
-                      <TableCell>{ticket.tipo || 'Não informado'}</TableCell>
                       <TableCell>{ticket.solicitante_nome}</TableCell>
+                      <TableCell>{ticket.solicitante_funcao}</TableCell>
+                      <TableCell>{ticket.setor || 'Não informado'}</TableCell>
                       <TableCell>{ticket.created_at ? format(new Date(ticket.created_at), 'dd/MM/yyyy HH:mm') : 'Sem data'}</TableCell>
                       <TableCell>{getTicketTimeLabel(ticket)}</TableCell>
+                      <TableCell>{ticket.feedback_nota ? `${ticket.feedback_nota}/5` : '-'}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={riskColors[risk.level]}>
-                          {risk.label}
-                        </Badge>
+                        <Badge variant="outline" className={riskColors[risk.level]}>{risk.label}</Badge>
                       </TableCell>
                     </TableRow>
                   );
                 }) : (
                   <TableRow>
-                    <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={12} className="py-8 text-center text-muted-foreground">
                       Nenhum ticket encontrado para os filtros selecionados.
                     </TableCell>
                   </TableRow>

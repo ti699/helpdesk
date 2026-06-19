@@ -60,6 +60,20 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Checklist de Segurança e Compliance Operacional
+
+- Mantenha `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY` e demais segredos somente no Supabase/Vercel.
+- Nunca versionar `.env`, `node_modules`, `dist`, `.DS_Store` ou arquivos temporários.
+- Revisar mensalmente usuários com perfil `admin`.
+- Revisar mensalmente usuários com acesso de Alta Gestão.
+- Confirmar que RLS está ativa nas tabelas sensíveis antes de publicar mudanças.
+- Manter ações críticas de ticket nas Edge Functions autenticadas, sem `service_role` no frontend.
+- Validar URLs de redirect do Supabase Auth, especialmente `/reset-password`.
+- Conferir logs de e-mail e falhas de envio em `ticket_email_logs`.
+- Usar menor privilégio possível nas contas GitHub, Supabase, Vercel e Resend.
+- Testar acesso por perfil: solicitante, agente TI, agente manutenção, admin e Alta Gestão.
+- Antes de subir alterações, rodar build local e adicionar ao Git somente arquivos de código/configuração.
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/0364a6ff-ab6b-4680-bdb2-de4a19218f09) and click on Share -> Publish.

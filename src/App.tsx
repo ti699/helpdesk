@@ -13,6 +13,7 @@ import TicketDetail from "./pages/TicketDetail";
 import Dashboard from "./pages/Dashboard";
 import ExecutiveDashboard from "./pages/ExecutiveDashboard";
 import TicketReports from "./pages/TicketReports";
+import ManagementReports from "./pages/ManagementReports";
 import TicketWorkspace from "./pages/TicketWorkspace";
 import Admin from "./pages/Admin";
 import ResetPassword from "./pages/ResetPassword";
@@ -76,6 +77,14 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <TicketReports />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/relatorios/gestao"
+                element={
+                  <ProtectedRoute>
+                    <ManagementReports />
                   </ProtectedRoute>
                 }
               />
