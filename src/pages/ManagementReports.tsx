@@ -113,6 +113,14 @@ const getTicketTimeLabel = (ticket: ManagementReportTicket) => {
   return `Sem resolução há ${formatDuration(getDurationMs(ticket.created_at))}`;
 };
 
+
+const getDelayLabel = (ticket: ManagementReportTicket, risk: ReturnType<typeof getRiskInfo>) => {
+  if (ticket.status === 'fechado') return 'Fechado';
+  if (ticket.status === 'resolvido') return 'Resolvido';
+  if (risk.level === 'normal') return 'No prazo';
+  return formatDuration(getDurationMs(ticket.created_at));
+};
+
 const averageResolution = (tickets: ManagementReportTicket[], type: TicketType) => {
   const durations = tickets
     .filter((ticket) => ticket.tipo === type && ticket.resolved_at)
@@ -425,6 +433,7 @@ export default function ManagementReports() {
 
     autoTable(doc, {
       startY: 26,
+      margin: { left: 8, right: 8 },
       head: [['Protocolo', 'Título', 'Área', 'Prioridade', 'Sinalização']],
       body: stats.oldestUnresolved.length
         ? stats.oldestUnresolved.map(({ ticket, risk }) => [
@@ -432,7 +441,7 @@ export default function ManagementReports() {
             truncateReportText(ticket.titulo, 70),
             sanitizeReportText(ticket.tipo),
             formatPriority(ticket.prioridade),
-            risk.label,
+            getDelayLabel(ticket, risk),
           ])
         : [['-', 'Nenhum ticket sem resolução no filtro atual', '-', '-', '-']],
       styles: { fontSize: 8, cellPadding: 2 },
@@ -479,7 +488,8 @@ export default function ManagementReports() {
 
     autoTable(doc, {
       startY: 26,
-      head: [['Protocolo', 'Título', 'Status', 'Prioridade', 'Área', 'Categoria', 'Setor', 'Solicitante', 'Função', 'Abertura', 'Tempo', 'Nota', 'Sinalização']],
+      margin: { left: 8, right: 8 },
+      head: [['Prot.', 'Título', 'Status', 'Prior.', 'Área', 'Cat.', 'Setor', 'Solic.', 'Função', 'Abert.', 'Tempo', 'Nota', 'Atraso']],
       body: tickets.length
         ? tickets.map((ticket) => {
             const risk = getRiskInfo(ticket);
@@ -496,26 +506,26 @@ export default function ManagementReports() {
               ticket.created_at ? format(new Date(ticket.created_at), 'dd/MM/yyyy HH:mm') : 'Sem data',
               getTicketTimeLabel(ticket),
               ticket.feedback_nota ? `${ticket.feedback_nota}/5` : '-',
-              risk.label,
+              getDelayLabel(ticket, risk),
             ];
           })
         : [['Sem tickets no filtro atual', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-']],
       styles: { fontSize: 6.5, cellPadding: 1.3, overflow: 'linebreak' },
       headStyles: { fillColor: [196, 24, 31], fontSize: 6.5 },
       columnStyles: {
-        0: { cellWidth: 18 },
-        1: { cellWidth: 34 },
-        2: { cellWidth: 22 },
-        3: { cellWidth: 18 },
-        4: { cellWidth: 22 },
-        5: { cellWidth: 22 },
-        6: { cellWidth: 21 },
-        7: { cellWidth: 26 },
-        8: { cellWidth: 21 },
-        9: { cellWidth: 22 },
-        10: { cellWidth: 26 },
-        11: { cellWidth: 12 },
-        12: { cellWidth: 27 },
+        0: { cellWidth: 15 },
+        1: { cellWidth: 29 },
+        2: { cellWidth: 17 },
+        3: { cellWidth: 14 },
+        4: { cellWidth: 19 },
+        5: { cellWidth: 18 },
+        6: { cellWidth: 17 },
+        7: { cellWidth: 24 },
+        8: { cellWidth: 17 },
+        9: { cellWidth: 19 },
+        10: { cellWidth: 22 },
+        11: { cellWidth: 9 },
+        12: { cellWidth: 16 },
       },
       didParseCell: (data) => {
         if (data.section !== 'body' || data.column.index !== 12) return;
