@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 export type TicketStatus = 'aberto' | 'em_andamento' | 'aguardando_resposta' | 'resolvido' | 'fechado';
 export type TicketPriority = 'baixa' | 'media' | 'alta' | 'critica';
 
-type TicketActionName = 'create_ticket' | 'add_message' | 'update_status';
+type TicketActionName = 'create_ticket' | 'add_message' | 'update_status' | 'reopen_ticket_from_feedback';
 
 interface TicketActionResult<T> {
   success: boolean;
@@ -61,4 +61,10 @@ export const updateTicketStatus = (ticketId: string, status: TicketStatus) =>
   invokeTicketAction<{ ok: boolean; unchanged?: boolean; status?: TicketStatus }>('update_status', {
     ticketId,
     status,
+  });
+
+export const reopenTicketFromFeedback = (ticketId: string, reason?: string) =>
+  invokeTicketAction<{ ok: boolean; status: TicketStatus }>('reopen_ticket_from_feedback', {
+    ticketId,
+    reason,
   });

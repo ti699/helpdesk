@@ -547,6 +547,79 @@ const handleUpdateStatus = async (
   return { ok: true, status: newStatus };
 };
 
+const handleReopenTicketFromFeedback = async (
+  payload: Record<string, unknown>,
+  context: Awaited<ReturnType<typeof getUserAndRole>>,
+) => {
+  const ticketId = String(payload.ticketId || "");
+  const reason = String(payload.reason || "").trim();
+
+  if (!ticketId) {
+    throw new HttpError(400, "Ticket é obrigatório");
+  }
+
+  const currentTicket = await getTicket(ticketId);
+
+  if (currentTicket.solicitante_id !== context.user.id) {
+    throw new HttpError(403, "Somente o solicitante pode reabrir este ticket pela avaliação");
+  }
+
+  if (!["resolvido", "fechado"].includes(currentTicket.status)) {
+    throw new HttpError(400, "A reabertura pela avaliação só está disponível para tickets resolvidos ou fechados");
+  }
+
+  const alreadyEvaluated = await hasTicketFeedback(currentTicket.id);
+  if (alreadyEvaluated) {
+    throw new HttpError(409, "Este atendimento já foi avaliado");
+  }
+
+  const { data, error } = await admin
+    .from("tickets")
+    .update({
+      status: "aberto",
+      resolved_at: null,
+      closed_at: null,
+    })
+    .eq("id", ticketId)
+    .select("id, protocolo, titulo, descricao, status, prioridade, tipo, setor, solicitante_id, agente_id, resolved_at")
+    .single();
+
+  if (error || !data) {
+    throw new HttpError(400, error?.message || "Não foi possível reabrir o ticket");
+  }
+
+  const ticket = data as TicketRecord;
+  const reopenMessage = reason
+    ? `Solicitante informou que a solicitação não foi resolvida e reabriu o ticket. Motivo: ${reason}`
+    : "Solicitante informou que a solicitação não foi resolvida e reabriu o ticket.";
+
+  const { error: interactionError } = await admin.from("interactions").insert({
+    ticket_id: ticketId,
+    autor_id: context.user.id,
+    mensagem: reopenMessage,
+    tipo: "mudanca_status",
+  });
+
+  if (interactionError) {
+    console.error("[ticket-actions] Failed to create reopen interaction", interactionError);
+  }
+
+  const requester = await getTicketRequester(ticket);
+  const departmentRecipients = await getDepartmentRecipients(ticket.tipo);
+
+  await sendEmails(
+    "status_updated",
+    buildTicketPayload(ticket, requester, {
+      newStatus: "aberto",
+      actorName: context.profile.nome,
+      messagePreview: reopenMessage,
+    }),
+    departmentRecipients,
+  );
+
+  return { ok: true, status: "aberto" as TicketStatus };
+};
+
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -577,6 +650,8 @@ const handler = async (req: Request): Promise<Response> => {
           return handleAddMessage(body.payload || {}, context);
         case "update_status":
           return handleUpdateStatus(body.payload || {}, context);
+        case "reopen_ticket_from_feedback":
+          return handleReopenTicketFromFeedback(body.payload || {}, context);
         default:
           throw new HttpError(400, "Ação inválida");
       }

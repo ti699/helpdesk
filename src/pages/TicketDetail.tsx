@@ -34,7 +34,7 @@ import { ptBR } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { getSignedUrl, getSignedUrls } from '@/lib/storage';
-import { addTicketMessage } from '@/lib/ticketActions';
+import { addTicketMessage, reopenTicketFromFeedback } from '@/lib/ticketActions';
 
 
 
@@ -127,8 +127,10 @@ export default function TicketDetail() {
   const [sending, setSending] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [solutionResolved, setSolutionResolved] = useState<boolean | null>(null);
   const [feedbackRating, setFeedbackRating] = useState(0);
   const [feedbackComment, setFeedbackComment] = useState('');
+  const [reopenReason, setReopenReason] = useState('');
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const [hasFeedback, setHasFeedback] = useState(false);
   const [feedbackChecked, setFeedbackChecked] = useState(false);
@@ -390,7 +392,7 @@ export default function TicketDetail() {
   };
 
   const submitFeedback = async () => {
-    if (!user || !id || feedbackRating === 0) return;
+    if (!user || !id || solutionResolved !== true || feedbackRating === 0) return;
 
     setSubmittingFeedback(true);
     try {
@@ -399,6 +401,7 @@ export default function TicketDetail() {
         avaliador_id: user.id,
         nota_satisfacao: feedbackRating,
         comentarios: feedbackComment || null,
+        eficacia_solucao: true,
       });
 
       if (error) throw error;
@@ -409,11 +412,44 @@ export default function TicketDetail() {
       });
       setShowFeedback(false);
       setHasFeedback(true);
+      setSolutionResolved(null);
+      setFeedbackRating(0);
+      setFeedbackComment('');
     } catch (error) {
       console.error('Error submitting feedback:', error);
       toast({
         title: 'Erro',
         description: 'Não foi possível enviar a avaliação',
+        variant: 'destructive',
+      });
+    } finally {
+      setSubmittingFeedback(false);
+    }
+  };
+
+  const reopenTicket = async () => {
+    if (!user || !id) return;
+
+    setSubmittingFeedback(true);
+    try {
+      await reopenTicketFromFeedback(id, reopenReason.trim() || undefined);
+
+      toast({
+        title: 'Ticket reaberto',
+        description: 'A equipe responsável foi avisada que a solicitação ainda não foi resolvida.',
+      });
+
+      setShowFeedback(false);
+      setSolutionResolved(null);
+      setFeedbackRating(0);
+      setFeedbackComment('');
+      setReopenReason('');
+      await Promise.all([fetchTicket(), fetchInteractions(), checkFeedback()]);
+    } catch (error) {
+      console.error('Error reopening ticket:', error);
+      toast({
+        title: 'Erro',
+        description: error instanceof Error ? error.message : 'Não foi possível reabrir o ticket',
         variant: 'destructive',
       });
     } finally {
@@ -741,68 +777,137 @@ export default function TicketDetail() {
       </main>
 
       {/* Feedback Dialog */}
-      <Dialog open={showFeedback} onOpenChange={setShowFeedback}>
+      <Dialog
+        open={showFeedback}
+        onOpenChange={(open) => {
+          setShowFeedback(open);
+          if (!open) {
+            setSolutionResolved(null);
+            setReopenReason('');
+          }
+        }}
+      >
         <DialogContent className="w-[95vw] max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-xl">Avalie este atendimento</DialogTitle>
             <DialogDescription className="text-sm">
-              Sua avaliação ajuda a melhorar o suporte para todos os setores.
+              Confirme primeiro se a solicitação foi resolvida. Caso não tenha sido, o mesmo ticket será reaberto.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-5 py-3 sm:py-4">
-            <div className="rounded-lg border bg-yellow-50 p-4 text-center dark:bg-yellow-950/20">
-              <Label className="text-sm font-semibold text-foreground">Nota de satisfação</Label>
-              <div className="mt-3 flex justify-center gap-2">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <Button
-                    key={star}
-                    variant="ghost"
-                    size="icon"
-                    className="h-12 w-12 rounded-full hover:bg-yellow-100 focus-visible:ring-yellow-500 dark:hover:bg-yellow-900/40 sm:h-14 sm:w-14"
-                    onClick={() => setFeedbackRating(star)}
-                    title={`${star} estrela${star > 1 ? 's' : ''}`}
-                  >
-                    <Star
-                      className={`h-8 w-8 transition-all sm:h-9 sm:w-9 ${
-                        star <= feedbackRating
-                          ? 'scale-110 fill-yellow-400 text-yellow-500'
-                          : 'fill-yellow-100 text-yellow-500 opacity-80 dark:fill-yellow-950'
-                      }`}
-                    />
-                  </Button>
-                ))}
+            <div className="rounded-lg border bg-muted/40 p-4">
+              <Label className="text-sm font-semibold text-foreground">Foi resolvida a sua solicitação?</Label>
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <Button
+                  type="button"
+                  variant={solutionResolved === true ? 'default' : 'outline'}
+                  onClick={() => setSolutionResolved(true)}
+                  className="justify-center"
+                >
+                  Sim, foi resolvida
+                </Button>
+                <Button
+                  type="button"
+                  variant={solutionResolved === false ? 'destructive' : 'outline'}
+                  onClick={() => setSolutionResolved(false)}
+                  className="justify-center"
+                >
+                  Não, reabrir ticket
+                </Button>
               </div>
-              <p className="mt-3 min-h-5 text-sm font-medium text-muted-foreground">
-                {feedbackRating > 0
-                  ? `${feedbackRating} de 5 estrela${feedbackRating > 1 ? 's' : ''}`
-                  : 'Selecione uma nota para liberar o envio'}
-              </p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="feedback-comment" className="text-xs sm:text-sm">Comentários (opcional)</Label>
-              <Textarea
-                id="feedback-comment"
-                placeholder="Conte-nos mais sobre sua experiência..."
-                value={feedbackComment}
-                onChange={(e) => setFeedbackComment(e.target.value)}
-                className="min-h-[80px] sm:min-h-[100px] text-xs sm:text-sm"
-              />
-            </div>
+
+            {solutionResolved === false && (
+              <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/20">
+                <div>
+                  <Label htmlFor="reopen-reason" className="text-xs sm:text-sm">
+                    Descreva o que ainda não foi resolvido (opcional)
+                  </Label>
+                  <Textarea
+                    id="reopen-reason"
+                    placeholder="Ex.: O problema continua acontecendo..."
+                    value={reopenReason}
+                    onChange={(e) => setReopenReason(e.target.value)}
+                    className="mt-2 min-h-[80px] text-xs sm:text-sm"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Ao confirmar, o ticket voltará para Aberto e a equipe responsável será notificada.
+                </p>
+              </div>
+            )}
+
+            {solutionResolved === true && (
+              <>
+                <div className="rounded-lg border bg-yellow-50 p-4 text-center dark:bg-yellow-950/20">
+                  <Label className="text-sm font-semibold text-foreground">Nota de satisfação</Label>
+                  <div className="mt-3 flex justify-center gap-2">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Button
+                        key={star}
+                        variant="ghost"
+                        size="icon"
+                        className="h-12 w-12 rounded-full hover:bg-yellow-100 focus-visible:ring-yellow-500 dark:hover:bg-yellow-900/40 sm:h-14 sm:w-14"
+                        onClick={() => setFeedbackRating(star)}
+                        title={`${star} estrela${star > 1 ? 's' : ''}`}
+                      >
+                        <Star
+                          className={`h-8 w-8 transition-all sm:h-9 sm:w-9 ${
+                            star <= feedbackRating
+                              ? 'scale-110 fill-yellow-400 text-yellow-500'
+                              : 'fill-yellow-100 text-yellow-500 opacity-80 dark:fill-yellow-950'
+                          }`}
+                        />
+                      </Button>
+                    ))}
+                  </div>
+                  <p className="mt-3 min-h-5 text-sm font-medium text-muted-foreground">
+                    {feedbackRating > 0
+                      ? `${feedbackRating} de 5 estrela${feedbackRating > 1 ? 's' : ''}`
+                      : 'Selecione uma nota para liberar o envio'}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="feedback-comment" className="text-xs sm:text-sm">Comentários (opcional)</Label>
+                  <Textarea
+                    id="feedback-comment"
+                    placeholder="Conte-nos mais sobre sua experiência..."
+                    value={feedbackComment}
+                    onChange={(e) => setFeedbackComment(e.target.value)}
+                    className="min-h-[80px] sm:min-h-[100px] text-xs sm:text-sm"
+                  />
+                </div>
+              </>
+            )}
           </div>
           <div className="flex flex-col-reverse sm:flex-row justify-end gap-2">
             <Button variant="outline" onClick={() => setShowFeedback(false)} className="text-xs sm:text-sm">
               Cancelar
             </Button>
-            <Button
-              onClick={submitFeedback}
-              disabled={feedbackRating === 0 || submittingFeedback}
-              className="text-sm"
-            >
-              {submittingFeedback ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : null}
-              Enviar Avaliação
-            </Button>
+            {solutionResolved === false ? (
+              <Button
+                variant="destructive"
+                onClick={reopenTicket}
+                disabled={submittingFeedback}
+                className="text-sm"
+              >
+                {submittingFeedback ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                Reabrir Ticket
+              </Button>
+            ) : (
+              <Button
+                onClick={submitFeedback}
+                disabled={solutionResolved !== true || feedbackRating === 0 || submittingFeedback}
+                className="text-sm"
+              >
+                {submittingFeedback ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                Enviar Avaliação
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>
