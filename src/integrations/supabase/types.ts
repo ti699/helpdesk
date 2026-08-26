@@ -187,7 +187,10 @@ export type Database = {
       }
       profiles: {
         Row: {
+          active: boolean
           created_at: string | null
+          deactivated_at: string | null
+          deactivated_by: string | null
           email: string
           foto_perfil: string | null
           funcao: string | null
@@ -199,7 +202,10 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          active?: boolean
           created_at?: string | null
+          deactivated_at?: string | null
+          deactivated_by?: string | null
           email: string
           foto_perfil?: string | null
           funcao?: string | null
@@ -211,7 +217,10 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          active?: boolean
           created_at?: string | null
+          deactivated_at?: string | null
+          deactivated_by?: string | null
           email?: string
           foto_perfil?: string | null
           funcao?: string | null

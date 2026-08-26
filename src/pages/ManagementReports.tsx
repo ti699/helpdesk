@@ -113,7 +113,6 @@ const getTicketTimeLabel = (ticket: ManagementReportTicket) => {
   return `Sem resolução há ${formatDuration(getDurationMs(ticket.created_at))}`;
 };
 
-
 const getDelayLabel = (ticket: ManagementReportTicket, risk: ReturnType<typeof getRiskInfo>) => {
   if (ticket.status === 'fechado') return 'Fechado';
   if (ticket.status === 'resolvido') return 'Resolvido';
@@ -495,14 +494,14 @@ export default function ManagementReports() {
             const risk = getRiskInfo(ticket);
             return [
               sanitizeReportText(ticket.protocolo),
-              truncateReportText(ticket.titulo, 55),
+              truncateReportText(ticket.titulo, 42),
               ticket.status ? statusLabels[ticket.status] : 'Não informado',
               formatPriority(ticket.prioridade),
               sanitizeReportText(ticket.tipo),
-              truncateReportText(ticket.categoria, 30),
-              truncateReportText(ticket.setor, 28),
-              truncateReportText(ticket.solicitante_nome, 34),
-              truncateReportText(ticket.solicitante_funcao, 26),
+              truncateReportText(ticket.categoria, 22),
+              truncateReportText(ticket.setor, 22),
+              truncateReportText(ticket.solicitante_nome, 28),
+              truncateReportText(ticket.solicitante_funcao, 22),
               ticket.created_at ? format(new Date(ticket.created_at), 'dd/MM/yyyy HH:mm') : 'Sem data',
               getTicketTimeLabel(ticket),
               ticket.feedback_nota ? `${ticket.feedback_nota}/5` : '-',
@@ -510,8 +509,13 @@ export default function ManagementReports() {
             ];
           })
         : [['Sem tickets no filtro atual', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-']],
-      styles: { fontSize: 6.5, cellPadding: 1.3, overflow: 'linebreak' },
-      headStyles: { fillColor: [196, 24, 31], fontSize: 6.5 },
+      styles: {
+        fontSize: 5.9,
+        cellPadding: { top: 1.2, right: 0.8, bottom: 1.2, left: 0.8 },
+        overflow: 'linebreak',
+        valign: 'middle',
+      },
+      headStyles: { fillColor: [196, 24, 31], fontSize: 6, minCellHeight: 7 },
       columnStyles: {
         0: { cellWidth: 15 },
         1: { cellWidth: 29 },

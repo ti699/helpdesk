@@ -122,6 +122,20 @@ const formatPriority = (priority?: string | null) => priorityLabels[(priority ||
 
 const isValidDateInput = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00`).getTime());
 
+const sanitizeReportText = (value: unknown, fallback = 'Não informado') => {
+  const text = String(value ?? '')
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return text || fallback;
+};
+
+const truncateReportText = (value: unknown, max = 90, fallback = 'Não informado') => {
+  const text = sanitizeReportText(value, fallback);
+  return text.length > max ? `${text.slice(0, Math.max(0, max - 1))}…` : text;
+};
+
 const getRiskInfo = (ticket: ReportTicket) => {
   if (ticket.status === 'resolvido' || ticket.status === 'fechado') {
     return {
@@ -166,7 +180,6 @@ const getTicketTimeLabel = (ticket: ReportTicket) => {
 
   return `Sem resolução há ${formatDuration(getDurationMs(ticket.created_at))}`;
 };
-
 
 const getDelayLabel = (ticket: ReportTicket, risk: ReturnType<typeof getRiskInfo>) => {
   if (ticket.status === 'fechado') return 'Fechado';
@@ -635,22 +648,27 @@ export default function TicketReports() {
         ? tickets.map((ticket) => {
             const risk = getRiskInfo(ticket);
             return [
-              ticket.protocolo,
-              ticket.titulo,
+              sanitizeReportText(ticket.protocolo),
+              truncateReportText(ticket.titulo, 48),
               ticket.status ? statusLabels[ticket.status] : 'Não informado',
               formatPriority(ticket.prioridade),
-              ticket.tipo || 'Não informado',
-              ticket.categoria || 'Não informado',
-              ticket.setor || 'Não informado',
-              ticket.solicitante_nome,
+              sanitizeReportText(ticket.tipo),
+              truncateReportText(ticket.categoria, 28),
+              truncateReportText(ticket.setor, 25),
+              truncateReportText(ticket.solicitante_nome, 34),
               ticket.created_at ? format(new Date(ticket.created_at), 'dd/MM/yyyy HH:mm') : 'Sem data',
               getTicketTimeLabel(ticket),
               getDelayLabel(ticket, risk),
             ];
           })
         : [['Sem tickets no filtro atual', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-']],
-      styles: { fontSize: 7, cellPadding: 1.6, overflow: 'linebreak' },
-      headStyles: { fillColor: [196, 24, 31], fontSize: 7 },
+      styles: {
+        fontSize: 6.4,
+        cellPadding: { top: 1.4, right: 1, bottom: 1.4, left: 1 },
+        overflow: 'linebreak',
+        valign: 'middle',
+      },
+      headStyles: { fillColor: [196, 24, 31], fontSize: 6.5, minCellHeight: 7 },
       columnStyles: {
         0: { cellWidth: 16 },
         1: { cellWidth: 34 },

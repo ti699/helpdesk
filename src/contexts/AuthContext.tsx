@@ -5,6 +5,9 @@ import { supabase } from '@/integrations/supabase/client';
 type AppRole = 'solicitante' | 'agente_ti' | 'agente_manutencao' | 'admin';
 
 interface Profile {
+  active: boolean;
+  deactivated_at?: string | null;
+  deactivated_by?: string | null;
   id: string;
   nome: string;
   email: string;
@@ -49,6 +52,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .maybeSingle();
 
       if (profileData) {
+        if (profileData.active === false) {
+          await supabase.auth.signOut();
+          setUser(null);
+          setSession(null);
+          setProfile(null);
+          setRole(null);
+          setManagementReportAccess(false);
+          return;
+        }
+
         setProfile(profileData as Profile);
       }
 
@@ -116,7 +129,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (!error && data.user) {
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('active')
+        .eq('id', data.user.id)
+        .maybeSingle();
+
+      if (profileData?.active === false) {
+        await supabase.auth.signOut();
+        return { error: new Error('Usuário desativado. Procure o administrador do sistema.') };
+      }
+    }
+
     return { error };
   };
 
