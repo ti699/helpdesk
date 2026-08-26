@@ -145,6 +145,8 @@ export default function ManagementReports() {
     return format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd');
   });
   const [periodoFim, setPeriodoFim] = useState(() => searchParams.get('periodoFim') || format(new Date(), 'yyyy-MM-dd'));
+  const [fechadoInicio, setFechadoInicio] = useState(() => searchParams.get('fechadoInicio') || '');
+  const [fechadoFim, setFechadoFim] = useState(() => searchParams.get('fechadoFim') || '');
   const [tipoFilter, setTipoFilter] = useState(() => searchParams.get('tipo') || 'all');
   const [requesterFilter, setRequesterFilter] = useState(() => searchParams.get('requester') || 'all');
   const [functionFilter, setFunctionFilter] = useState(() => searchParams.get('funcao') || 'all');
@@ -162,8 +164,14 @@ export default function ManagementReports() {
     if (new Date(`${periodoInicio}T00:00:00`) > new Date(`${periodoFim}T00:00:00`)) {
       return { valid: false, message: 'A data inicial não pode ser maior que a data final.' };
     }
+    if ((fechadoInicio && !isValidDateInput(fechadoInicio)) || (fechadoFim && !isValidDateInput(fechadoFim))) {
+      return { valid: false, message: 'Informe datas de fechamento válidas.' };
+    }
+    if (fechadoInicio && fechadoFim && new Date(`${fechadoInicio}T00:00:00`) > new Date(`${fechadoFim}T00:00:00`)) {
+      return { valid: false, message: 'A data inicial de fechamento não pode ser maior que a data final.' };
+    }
     return { valid: true, message: '' };
-  }, [periodoInicio, periodoFim]);
+  }, [periodoInicio, periodoFim, fechadoInicio, fechadoFim]);
 
   useEffect(() => {
     if (!authLoading && !user) navigate('/auth');
@@ -177,7 +185,7 @@ export default function ManagementReports() {
     if (user && hasReportAccess) {
       fetchReportData();
     }
-  }, [user, hasReportAccess, periodoInicio, periodoFim, tipoFilter, statusFilters.join(','), requesterFilter, functionFilter]);
+  }, [user, hasReportAccess, periodoInicio, periodoFim, fechadoInicio, fechadoFim, tipoFilter, statusFilters.join(','), requesterFilter, functionFilter]);
 
   const fetchAllTickets = async () => {
     const pageSize = 1000;
@@ -195,6 +203,8 @@ export default function ManagementReports() {
 
       if (tipoFilter !== 'all') query = query.eq('tipo', tipoFilter);
       if (statusFilters.length > 0) query = query.in('status', statusFilters);
+      if (fechadoInicio) query = query.gte('closed_at', fechadoInicio);
+      if (fechadoFim) query = query.lte('closed_at', `${fechadoFim}T23:59:59`);
 
       const { data, error } = await query;
       if (error) throw error;
@@ -345,8 +355,12 @@ export default function ManagementReports() {
 
     doc.setTextColor(17, 24, 39);
     doc.setFontSize(10);
+    const fechamentoLabel = fechadoInicio || fechadoFim
+      ? `Fechamento: ${fechadoInicio ? format(new Date(`${fechadoInicio}T00:00:00`), 'dd/MM/yyyy') : 'início'} até ${fechadoFim ? format(new Date(`${fechadoFim}T00:00:00`), 'dd/MM/yyyy') : 'hoje'}`
+      : 'Fechamento: não filtrado';
     doc.text(`Período: ${format(new Date(`${periodoInicio}T00:00:00`), 'dd/MM/yyyy')} até ${format(new Date(`${periodoFim}T00:00:00`), 'dd/MM/yyyy')}`, marginX, 38);
-    doc.text(`Solicitante: ${requesterFilter === 'all' ? 'Todos' : requesterOptions.find((option) => option.id === requesterFilter)?.nome || 'Selecionado'} | Função: ${functionFilter === 'all' ? 'Todas' : functionFilter}`, marginX, 44);
+    doc.text(fechamentoLabel, marginX, 44);
+    doc.text(`Solicitante: ${requesterFilter === 'all' ? 'Todos' : requesterOptions.find((option) => option.id === requesterFilter)?.nome || 'Selecionado'} | Função: ${functionFilter === 'all' ? 'Todas' : functionFilter}`, marginX, 50);
 
     const summary = [
       ['Tickets', stats.total, [31, 41, 55]],
@@ -360,7 +374,7 @@ export default function ManagementReports() {
     const cardWidth = (pageWidth - marginX * 2 - 10) / 6;
     summary.forEach(([label, value, color], index) => {
       const x = marginX + index * (cardWidth + 2);
-      const y = 54;
+      const y = 60;
       doc.setDrawColor(226, 232, 240);
       doc.setFillColor(248, 250, 252);
       doc.roundedRect(x, y, cardWidth, 22, 2, 2, 'FD');
@@ -377,7 +391,7 @@ export default function ManagementReports() {
     });
 
     autoTable(doc, {
-      startY: 84,
+      startY: 90,
       head: [['Indicador complementar', 'Valor']],
       body: [
         ['Abertos', stats.abertos],
@@ -395,7 +409,7 @@ export default function ManagementReports() {
     });
 
     autoTable(doc, {
-      startY: 84,
+      startY: 90,
       head: [['Status', 'Qtd.', '%']],
       body: stats.statusRows.map((row) => [row.label, row.count, `${row.percent}%`]),
       tableWidth: 60,
@@ -405,7 +419,7 @@ export default function ManagementReports() {
     });
 
     autoTable(doc, {
-      startY: 84,
+      startY: 90,
       head: [['Área', 'Qtd.', '%']],
       body: stats.areaRows.map((row) => [row.label, row.count, `${row.percent}%`]),
       tableWidth: 60,
@@ -610,14 +624,22 @@ export default function ManagementReports() {
               O PDF usa exatamente os filtros e indicadores exibidos nesta prévia.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-2 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-6">
+          <CardContent className="grid gap-2 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
             <div className="space-y-1">
-              <Label className="text-xs">Início</Label>
+              <Label className="text-xs">Abertura início</Label>
               <Input className="h-9" type="date" value={periodoInicio} onChange={(event) => setPeriodoInicio(event.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Fim</Label>
+              <Label className="text-xs">Abertura fim</Label>
               <Input className="h-9" type="date" value={periodoFim} onChange={(event) => setPeriodoFim(event.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Fechado de</Label>
+              <Input className="h-9" type="date" value={fechadoInicio} onChange={(event) => setFechadoInicio(event.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Fechado até</Label>
+              <Input className="h-9" type="date" value={fechadoFim} onChange={(event) => setFechadoFim(event.target.value)} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Área</Label>

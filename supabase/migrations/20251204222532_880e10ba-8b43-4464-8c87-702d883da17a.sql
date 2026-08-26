@@ -1,5 +1,5 @@
 -- Enum para roles de usuário
-CREATE TYPE public.app_role AS ENUM ('solicitante', 'agente_ti', 'agente_manutencao' 'admin');
+CREATE TYPE public.app_role AS ENUM ('solicitante', 'agente_ti', 'agente_manutencao', 'admin');
 
 -- Enum para status do ticket
 CREATE TYPE public.ticket_status AS ENUM ('aberto', 'em_andamento', 'aguardando_resposta', 'resolvido', 'fechado');

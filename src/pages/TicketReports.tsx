@@ -291,6 +291,8 @@ export default function TicketReports() {
     return format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd');
   });
   const [periodoFim, setPeriodoFim] = useState(() => searchParams.get('periodoFim') || format(new Date(), 'yyyy-MM-dd'));
+  const [fechadoInicio, setFechadoInicio] = useState(() => searchParams.get('fechadoInicio') || '');
+  const [fechadoFim, setFechadoFim] = useState(() => searchParams.get('fechadoFim') || '');
   const [tipoFilter, setTipoFilter] = useState(() => searchParams.get('tipo') || 'all');
   const [setorFilter, setSetorFilter] = useState(() => searchParams.get('setor') || 'all');
   const [statusFilters, setStatusFilters] = useState<TicketStatus[]>(() => (
@@ -314,8 +316,14 @@ export default function TicketReports() {
     if (new Date(`${periodoInicio}T00:00:00`) > new Date(`${periodoFim}T00:00:00`)) {
       return { valid: false, message: 'A data inicial não pode ser maior que a data final.' };
     }
+    if ((fechadoInicio && !isValidDateInput(fechadoInicio)) || (fechadoFim && !isValidDateInput(fechadoFim))) {
+      return { valid: false, message: 'Informe datas de fechamento válidas.' };
+    }
+    if (fechadoInicio && fechadoFim && new Date(`${fechadoInicio}T00:00:00`) > new Date(`${fechadoFim}T00:00:00`)) {
+      return { valid: false, message: 'A data inicial de fechamento não pode ser maior que a data final.' };
+    }
     return { valid: true, message: '' };
-  }, [periodoInicio, periodoFim]);
+  }, [periodoInicio, periodoFim, fechadoInicio, fechadoFim]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -333,7 +341,7 @@ export default function TicketReports() {
     if (user && hasReportAccess) {
       fetchReportData();
     }
-  }, [user, hasReportAccess, periodoInicio, periodoFim, tipoFilter, setorFilter, statusFilters.join(',')]);
+  }, [user, hasReportAccess, periodoInicio, periodoFim, fechadoInicio, fechadoFim, tipoFilter, setorFilter, statusFilters.join(',')]);
 
   const fetchAllTickets = async () => {
     const pageSize = 1000;
@@ -361,6 +369,14 @@ export default function TicketReports() {
 
       if (statusFilters.length > 0) {
         query = query.in('status', statusFilters);
+      }
+
+      if (fechadoInicio) {
+        query = query.gte('closed_at', fechadoInicio);
+      }
+
+      if (fechadoFim) {
+        query = query.lte('closed_at', `${fechadoFim}T23:59:59`);
       }
 
       const { data, error } = await query;
@@ -501,8 +517,12 @@ export default function TicketReports() {
     doc.setTextColor(17, 24, 39);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
+    const fechamentoLabel = fechadoInicio || fechadoFim
+      ? `Fechamento: ${fechadoInicio ? format(new Date(`${fechadoInicio}T00:00:00`), 'dd/MM/yyyy') : 'início'} até ${fechadoFim ? format(new Date(`${fechadoFim}T00:00:00`), 'dd/MM/yyyy') : 'hoje'}`
+      : 'Fechamento: não filtrado';
     doc.text(`Período: ${format(new Date(`${periodoInicio}T00:00:00`), 'dd/MM/yyyy')} até ${format(new Date(`${periodoFim}T00:00:00`), 'dd/MM/yyyy')}`, marginX, 38);
-    doc.text(`Setor: ${setorFilter === 'all' ? 'Todos' : setorFilter} | Total considerado: ${stats.total}`, marginX, 44);
+    doc.text(fechamentoLabel, marginX, 44);
+    doc.text(`Setor: ${setorFilter === 'all' ? 'Todos' : setorFilter} | Total considerado: ${stats.total}`, marginX, 50);
 
     const summary = [
       ['Total', stats.total, [31, 41, 55]],
@@ -516,7 +536,7 @@ export default function TicketReports() {
     const cardWidth = (pageWidth - marginX * 2 - 10) / 6;
     summary.forEach(([label, value, color], index) => {
       const x = marginX + index * (cardWidth + 2);
-      const y = 54;
+      const y = 60;
       doc.setDrawColor(226, 232, 240);
       doc.setFillColor(248, 250, 252);
       doc.roundedRect(x, y, cardWidth, 24, 2, 2, 'FD');
@@ -533,7 +553,7 @@ export default function TicketReports() {
     });
 
     autoTable(doc, {
-      startY: 88,
+      startY: 94,
       head: [['Indicador complementar', 'Valor']],
       body: [
         ['Alta/Crítica abertas', stats.highPriorityOpen],
@@ -550,7 +570,7 @@ export default function TicketReports() {
     });
 
     autoTable(doc, {
-      startY: 88,
+      startY: 94,
       head: [['Status', 'Qtd.', '%']],
       body: stats.statusRows.map((row) => [row.label, row.count, `${row.percent}%`]),
       tableWidth: 60,
@@ -560,7 +580,7 @@ export default function TicketReports() {
     });
 
     autoTable(doc, {
-      startY: 88,
+      startY: 94,
       head: [['Prioridade', 'Qtd.', '%']],
       body: stats.priorityRows.map((row) => [row.label, row.count, `${row.percent}%`]),
       tableWidth: 60,
@@ -570,7 +590,7 @@ export default function TicketReports() {
     });
 
     autoTable(doc, {
-      startY: 88,
+      startY: 94,
       head: [['Área', 'Qtd.', '%']],
       body: stats.areaRows.map((row) => [row.label, row.count, `${row.percent}%`]),
       tableWidth: 58,
@@ -761,14 +781,22 @@ export default function TicketReports() {
               A prévia abaixo usa os mesmos dados que serão exportados no PDF.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-2 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-6">
+          <CardContent className="grid gap-2 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
             <div className="space-y-1">
-              <Label className="text-xs">Início</Label>
+              <Label className="text-xs">Abertura início</Label>
               <Input className="h-9" type="date" value={periodoInicio} onChange={(event) => setPeriodoInicio(event.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Fim</Label>
+              <Label className="text-xs">Abertura fim</Label>
               <Input className="h-9" type="date" value={periodoFim} onChange={(event) => setPeriodoFim(event.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Fechado de</Label>
+              <Input className="h-9" type="date" value={fechadoInicio} onChange={(event) => setFechadoInicio(event.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Fechado até</Label>
+              <Input className="h-9" type="date" value={fechadoFim} onChange={(event) => setFechadoFim(event.target.value)} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Área</Label>

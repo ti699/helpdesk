@@ -45,6 +45,7 @@ interface TicketData {
   categoria: string | null;
   created_at: string;
   resolved_at: string | null;
+  closed_at: string | null;
   solicitante: {
     id: string;
     nome: string;
@@ -68,6 +69,8 @@ const priorityColors: Record<string, string> = {
 };
 
 const unresolvedStatuses: TicketStatus[] = ['aberto', 'em_andamento', 'aguardando_resposta'];
+
+const isValidDateInput = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00`).getTime());
 
 const getDurationMs = (start?: string | null, end?: string | null) => {
   if (!start) return null;
@@ -134,18 +137,44 @@ export default function Dashboard() {
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [periodoInicio, setPeriodoInicio] = useState('');
   const [periodoFim, setPeriodoFim] = useState('');
+  const [fechadoInicio, setFechadoInicio] = useState('');
+  const [fechadoFim, setFechadoFim] = useState('');
   const [ratingMin, setRatingMin] = useState<number | undefined>(undefined);
   
   // Selection
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
+  const getClosedPeriodError = () => {
+    if ((fechadoInicio && !isValidDateInput(fechadoInicio)) || (fechadoFim && !isValidDateInput(fechadoFim))) {
+      return 'Informe datas de fechamento válidas.';
+    }
+
+    if (fechadoInicio && fechadoFim && new Date(`${fechadoInicio}T00:00:00`) > new Date(`${fechadoFim}T00:00:00`)) {
+      return 'A data inicial de fechamento não pode ser maior que a data final.';
+    }
+
+    return '';
+  };
+
   const handleOpenTicketReport = () => {
+    const closedPeriodError = getClosedPeriodError();
+    if (closedPeriodError) {
+      toast({
+        title: 'Filtro de fechamento inválido',
+        description: closedPeriodError,
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const params = new URLSearchParams();
 
     if (statusFilter.length > 0) params.set('status', statusFilter.join(','));
     if (tipoFilter !== 'all') params.set('tipo', tipoFilter);
     if (periodoInicio) params.set('periodoInicio', periodoInicio);
     if (periodoFim) params.set('periodoFim', periodoFim);
+    if (fechadoInicio) params.set('fechadoInicio', fechadoInicio);
+    if (fechadoFim) params.set('fechadoFim', fechadoFim);
     if (setorFilter && setorFilter !== 'all') params.set('setor', setorFilter);
 
     navigate(`/relatorios/tickets${params.toString() ? `?${params.toString()}` : ''}`);
@@ -184,10 +213,22 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (user && (role === 'agente_ti' || role === 'agente_manutencao' || role === 'admin')) {
+      const closedPeriodError = getClosedPeriodError();
+      if (closedPeriodError) {
+        setTickets([]);
+        setLoading(false);
+        toast({
+          title: 'Filtro de fechamento inválido',
+          description: closedPeriodError,
+          variant: 'destructive',
+        });
+        return;
+      }
+
       fetchTickets();
       fetchStats();
     }
-  }, [user, role, statusFilter, tipoFilter, periodoInicio, periodoFim, setorFilter]);
+  }, [user, role, statusFilter, tipoFilter, periodoInicio, periodoFim, fechadoInicio, fechadoFim, setorFilter]);
 
   const fetchTickets = async () => {
     try {
@@ -204,6 +245,7 @@ export default function Dashboard() {
           categoria,
           created_at,
           resolved_at,
+          closed_at,
           solicitante_id
         `)
         .order('created_at', { ascending: false });
@@ -226,6 +268,14 @@ export default function Dashboard() {
       
       if (periodoFim) {
         query = query.lte('created_at', periodoFim + 'T23:59:59');
+      }
+
+      if (fechadoInicio) {
+        query = query.gte('closed_at', fechadoInicio);
+      }
+
+      if (fechadoFim) {
+        query = query.lte('closed_at', fechadoFim + 'T23:59:59');
       }
       
       if (setorFilter !== 'all') {
@@ -303,6 +353,14 @@ export default function Dashboard() {
           baseQuery = baseQuery.lte(field, periodoFim + 'T23:59:59');
         }
 
+        if (fechadoInicio) {
+          baseQuery = baseQuery.gte('closed_at', fechadoInicio);
+        }
+
+        if (fechadoFim) {
+          baseQuery = baseQuery.lte('closed_at', fechadoFim + 'T23:59:59');
+        }
+
         return baseQuery;
       };
 
@@ -354,7 +412,7 @@ export default function Dashboard() {
 
         let resolutionQuery = supabase
           .from('tickets')
-          .select('created_at, resolved_at')
+          .select('created_at, resolved_at, closed_at')
           .eq('tipo', ticketType)
           .in('status', ['resolvido', 'fechado'])
           .not('resolved_at', 'is', null);
@@ -371,6 +429,14 @@ export default function Dashboard() {
 
         if (periodoFim) {
           resolutionQuery = resolutionQuery.lte('resolved_at', periodoFim + 'T23:59:59');
+        }
+
+        if (fechadoInicio) {
+          resolutionQuery = resolutionQuery.gte('closed_at', fechadoInicio);
+        }
+
+        if (fechadoFim) {
+          resolutionQuery = resolutionQuery.lte('closed_at', fechadoFim + 'T23:59:59');
         }
 
         const { data, error } = await resolutionQuery.limit(1000);
@@ -611,6 +677,10 @@ export default function Dashboard() {
                 onPeriodoInicioChange={setPeriodoInicio}
                 periodoFim={periodoFim}
                 onPeriodoFimChange={setPeriodoFim}
+                fechadoInicio={fechadoInicio}
+                onFechadoInicioChange={setFechadoInicio}
+                fechadoFim={fechadoFim}
+                onFechadoFimChange={setFechadoFim}
                 setorFilter={setorFilter}
                 onSetorChange={setSetorFilter}
                 ratingMin={ratingMin}

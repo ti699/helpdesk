@@ -24,6 +24,10 @@ interface TicketFiltersProps {
   onPeriodoInicioChange: (value: string) => void;
   periodoFim?: string;
   onPeriodoFimChange: (value: string) => void;
+  fechadoInicio?: string;
+  onFechadoInicioChange?: (value: string) => void;
+  fechadoFim?: string;
+  onFechadoFimChange?: (value: string) => void;
   setorFilter?: string;
   onSetorChange?: (value: string) => void;
   ratingMin?: number;
@@ -45,6 +49,10 @@ export function TicketFilters({
   onPeriodoInicioChange,
   periodoFim,
   onPeriodoFimChange,
+  fechadoInicio,
+  onFechadoInicioChange,
+  fechadoFim,
+  onFechadoFimChange,
   setorFilter,
   onSetorChange,
   ratingMin,
@@ -64,6 +72,8 @@ export function TicketFilters({
     tipoFilter !== 'all' || 
     periodoInicio || 
     periodoFim || 
+    fechadoInicio ||
+    fechadoFim ||
     (setorFilter && setorFilter !== 'all') ||
     (ratingMin && ratingMin > 0);
 
@@ -72,6 +82,8 @@ export function TicketFilters({
     onTipoChange('all');
     onPeriodoInicioChange('');
     onPeriodoFimChange('');
+    if (onFechadoInicioChange) onFechadoInicioChange('');
+    if (onFechadoFimChange) onFechadoFimChange('');
     if (onSetorChange) onSetorChange('all');
     if (onRatingMinChange) onRatingMinChange(undefined);
   };
@@ -90,7 +102,7 @@ export function TicketFilters({
   const noneSelected = statusFilter.length === 0;
   const indeterminate = !allSelected && !noneSelected;
 
-  function handleStatusChange(value: string) {
+  function handleStatusChange(value: TicketStatus) {
     if (statusFilter.includes(value)) {
       onStatusChange(statusFilter.filter((v) => v !== value));
     } else {
@@ -102,7 +114,7 @@ export function TicketFilters({
     if (allSelected) {
       onStatusChange([]);
     } else {
-      onStatusChange(statusOptions.map((s) => s.value));
+      onStatusChange(statusOptions.map((s) => s.value as TicketStatus));
     }
   }
 
@@ -161,8 +173,8 @@ export function TicketFilters({
             {statusOptions.map((option) => (
               <label key={option.value} className="flex items-center gap-2 cursor-pointer px-2 py-1 rounded hover:bg-muted">
                 <Checkbox
-                  checked={statusFilter.includes(option.value)}
-                  onCheckedChange={() => handleStatusChange(option.value)}
+                  checked={statusFilter.includes(option.value as TicketStatus)}
+                  onCheckedChange={() => handleStatusChange(option.value as TicketStatus)}
                 />
                 <span className="text-xs sm:text-sm">{option.label}</span>
               </label>
@@ -217,9 +229,9 @@ export function TicketFilters({
                 )}
               </div>
 
-              {/* Período */}
+              {/* Data de abertura */}
               <div className="space-y-2">
-                <Label className="text-xs sm:text-sm">Período</Label>
+                <Label className="text-xs sm:text-sm">Data de abertura</Label>
                 <div className="flex gap-2">
                   <Input
                     type="date"
@@ -235,6 +247,27 @@ export function TicketFilters({
                   />
                 </div>
               </div>
+
+              {/* Data de fechamento */}
+              {onFechadoInicioChange && onFechadoFimChange && (
+                <div className="space-y-2">
+                  <Label className="text-xs sm:text-sm">Data de fechamento</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="date"
+                      value={fechadoInicio || ''}
+                      onChange={(e) => onFechadoInicioChange(e.target.value)}
+                      className="flex-1 text-xs sm:text-sm"
+                    />
+                    <Input
+                      type="date"
+                      value={fechadoFim || ''}
+                      onChange={(e) => onFechadoFimChange(e.target.value)}
+                      className="flex-1 text-xs sm:text-sm"
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Setor */}
               {onSetorChange && (

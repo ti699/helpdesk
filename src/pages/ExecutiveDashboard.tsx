@@ -144,6 +144,8 @@ export default function ExecutiveDashboard() {
     return format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd');
   });
   const [periodoFim, setPeriodoFim] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+  const [fechadoInicio, setFechadoInicio] = useState('');
+  const [fechadoFim, setFechadoFim] = useState('');
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   useEffect(() => {
@@ -166,8 +168,16 @@ export default function ExecutiveDashboard() {
       return { valid: false, message: 'A data inicial não pode ser maior que a data final.' };
     }
 
+    if ((fechadoInicio && !isValidDateInput(fechadoInicio)) || (fechadoFim && !isValidDateInput(fechadoFim))) {
+      return { valid: false, message: 'Informe datas de fechamento válidas.' };
+    }
+
+    if (fechadoInicio && fechadoFim && new Date(`${fechadoInicio}T00:00:00`) > new Date(`${fechadoFim}T00:00:00`)) {
+      return { valid: false, message: 'A data inicial de fechamento não pode ser maior que a data final.' };
+    }
+
     return { valid: true, message: '' };
-  }, [periodoInicio, periodoFim]);
+  }, [periodoInicio, periodoFim, fechadoInicio, fechadoFim]);
 
   useEffect(() => {
     if (!authLoading && role && !hasExecutiveAccess) {
@@ -179,7 +189,7 @@ export default function ExecutiveDashboard() {
     if (user && hasExecutiveAccess) {
       fetchManagementData();
     }
-  }, [user, hasExecutiveAccess, tipoFilter, statusFilters, requesterFilter, functionFilter, periodoInicio, periodoFim]);
+  }, [user, hasExecutiveAccess, tipoFilter, statusFilters, requesterFilter, functionFilter, periodoInicio, periodoFim, fechadoInicio, fechadoFim]);
 
   const fetchManagementData = async () => {
     if (!periodValidation.valid) {
@@ -207,6 +217,14 @@ export default function ExecutiveDashboard() {
 
       if (statusFilters.length > 0) {
         ticketQuery = ticketQuery.in('status', statusFilters);
+      }
+
+      if (fechadoInicio) {
+        ticketQuery = ticketQuery.gte('closed_at', fechadoInicio);
+      }
+
+      if (fechadoFim) {
+        ticketQuery = ticketQuery.lte('closed_at', fechadoFim + 'T23:59:59');
       }
 
       const { data: ticketData, error: ticketError } = await ticketQuery;
@@ -334,6 +352,8 @@ export default function ExecutiveDashboard() {
 
     if (periodoInicio) params.set('periodoInicio', periodoInicio);
     if (periodoFim) params.set('periodoFim', periodoFim);
+    if (fechadoInicio) params.set('fechadoInicio', fechadoInicio);
+    if (fechadoFim) params.set('fechadoFim', fechadoFim);
     if (tipoFilter !== 'all') params.set('tipo', tipoFilter);
     if (statusFilters.length > 0) params.set('status', statusFilters.join(','));
     if (requesterFilter !== 'all') params.set('requester', requesterFilter);
@@ -403,14 +423,22 @@ export default function ExecutiveDashboard() {
             </div>
             <CardDescription>Indicadores calculados pelo período de abertura dos tickets.</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+          <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
             <div className="space-y-2">
-              <Label>Início</Label>
+              <Label>Abertura início</Label>
               <Input type="date" value={periodoInicio} onChange={(event) => setPeriodoInicio(event.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>Fim</Label>
+              <Label>Abertura fim</Label>
               <Input type="date" value={periodoFim} onChange={(event) => setPeriodoFim(event.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Fechado de</Label>
+              <Input type="date" value={fechadoInicio} onChange={(event) => setFechadoInicio(event.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Fechado até</Label>
+              <Input type="date" value={fechadoFim} onChange={(event) => setFechadoFim(event.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>Área</Label>
