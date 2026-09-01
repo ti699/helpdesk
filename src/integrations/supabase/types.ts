@@ -185,6 +185,116 @@ export type Database = {
           },
         ]
       }
+      service_executors: {
+        Row: {
+          active: boolean
+          area: string
+          created_at: string
+          email: string | null
+          id: string
+          name: string
+          phone: string | null
+          specialty: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          area: string
+          created_at?: string
+          email?: string | null
+          id?: string
+          name: string
+          phone?: string | null
+          specialty: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          area?: string
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string
+          phone?: string | null
+          specialty?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ticket_service_session_executors: {
+        Row: {
+          executor_id: string
+          session_id: string
+        }
+        Insert: {
+          executor_id: string
+          session_id: string
+        }
+        Update: {
+          executor_id?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_service_session_executors_executor_id_fkey"
+            columns: ["executor_id"]
+            isOneToOne: false
+            referencedRelation: "service_executors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_service_session_executors_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "ticket_service_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ticket_service_sessions: {
+        Row: {
+          created_at: string
+          finished_at: string | null
+          finished_by: string | null
+          id: string
+          notes: string | null
+          started_at: string
+          started_by: string | null
+          ticket_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          finished_at?: string | null
+          finished_by?: string | null
+          id?: string
+          notes?: string | null
+          started_at: string
+          started_by?: string | null
+          ticket_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          finished_at?: string | null
+          finished_by?: string | null
+          id?: string
+          notes?: string | null
+          started_at?: string
+          started_by?: string | null
+          ticket_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_service_sessions_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           active: boolean
@@ -246,6 +356,8 @@ export type Database = {
           prioridade: Database["public"]["Enums"]["ticket_priority"] | null
           protocolo: string
           resolved_at: string | null
+          service_finished_at: string | null
+          service_started_at: string | null
           setor: string | null
           solicitante_id: string
           status: Database["public"]["Enums"]["ticket_status"] | null
@@ -265,6 +377,8 @@ export type Database = {
           prioridade?: Database["public"]["Enums"]["ticket_priority"] | null
           protocolo?: string
           resolved_at?: string | null
+          service_finished_at?: string | null
+          service_started_at?: string | null
           setor?: string | null
           solicitante_id: string
           status?: Database["public"]["Enums"]["ticket_status"] | null
@@ -284,6 +398,8 @@ export type Database = {
           prioridade?: Database["public"]["Enums"]["ticket_priority"] | null
           protocolo?: string
           resolved_at?: string | null
+          service_finished_at?: string | null
+          service_started_at?: string | null
           setor?: string | null
           solicitante_id?: string
           status?: Database["public"]["Enums"]["ticket_status"] | null

@@ -58,6 +58,10 @@ interface TicketData {
     audio: string | null;
   };
   created_at: string;
+  resolved_at: string | null;
+  closed_at: string | null;
+  service_started_at: string | null;
+  service_finished_at: string | null;
   solicitante: {
     id: string;
     nome: string;
@@ -111,6 +115,26 @@ const getDayLabel = (date: Date) => {
   if (isSameCalendarDay(date, today)) return 'Hoje';
   if (isSameCalendarDay(date, yesterday)) return 'Ontem';
   return format(date, 'dd/MM/yyyy', { locale: ptBR });
+};
+
+const getDurationMs = (start?: string | null, end?: string | null) => {
+  if (!start || !end) return null;
+  const startTime = new Date(start).getTime();
+  const endTime = new Date(end).getTime();
+  if (Number.isNaN(startTime) || Number.isNaN(endTime) || endTime < startTime) return null;
+  return endTime - startTime;
+};
+
+const formatDuration = (durationMs: number | null) => {
+  if (durationMs === null) return 'Sem dados';
+  const totalMinutes = Math.max(1, Math.floor(durationMs / 60000));
+  const totalHours = Math.floor(totalMinutes / 60);
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  const minutes = totalMinutes % 60;
+  if (totalHours < 1) return `${totalMinutes}min`;
+  if (days < 1) return minutes > 0 ? `${totalHours}h ${minutes}min` : `${totalHours}h`;
+  return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
 };
 
 export default function TicketDetail() {
@@ -251,6 +275,10 @@ export default function TicketDetail() {
           categoria,
           anexos,
           created_at,
+          resolved_at,
+          closed_at,
+          service_started_at,
+          service_finished_at,
           solicitante_id,
           agente_id
         `)
@@ -474,13 +502,28 @@ export default function TicketDetail() {
       doc.text(`Prioridade: ${ticket.prioridade}`, 14, 46);
       doc.text(`Aberto em: ${createdAt}`, 14, 54);
       doc.text(`Solicitante: ${ticket.solicitante?.nome || 'Não informado'}`, 14, 62);
+      doc.text(
+        `Início do serviço: ${ticket.service_started_at ? format(new Date(ticket.service_started_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) : 'Não iniciado'}`,
+        14,
+        70,
+      );
+      doc.text(
+        `Encerramento do serviço: ${ticket.service_finished_at ? format(new Date(ticket.service_finished_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) : 'Não encerrado'}`,
+        14,
+        78,
+      );
+      doc.text(
+        `Produtividade do serviço: ${formatDuration(getDurationMs(ticket.service_started_at, ticket.service_finished_at))}`,
+        14,
+        86,
+      );
 
       const descriptionLines = doc.splitTextToSize(ticket.descricao || '', 180);
-      doc.text('Descrição:', 14, 76);
-      doc.text(descriptionLines, 14, 84);
+      doc.text('Descrição:', 14, 100);
+      doc.text(descriptionLines, 14, 108);
 
       autoTable(doc, {
-        startY: Math.min(120, 90 + descriptionLines.length * 6),
+        startY: Math.min(138, 114 + descriptionLines.length * 6),
         head: [['Data', 'Autor', 'Tipo', 'Mensagem']],
         body: interactions.map((interaction) => [
           format(new Date(interaction.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR }),
@@ -672,6 +715,31 @@ export default function TicketDetail() {
               {ticket.tipo && <span className="hidden sm:inline">• {ticket.tipo}</span>}
               {ticket.categoria && <span className="hidden xs:inline">• {ticket.categoria}</span>}
               {ticket.setor && <span className="hidden sm:inline">• {ticket.setor}</span>}
+            </div>
+
+            <div className="grid gap-2 rounded-lg border bg-muted/30 p-3 text-xs sm:grid-cols-3">
+              <div>
+                <p className="font-medium text-foreground">Início do serviço</p>
+                <p className="text-muted-foreground">
+                  {ticket.service_started_at
+                    ? format(new Date(ticket.service_started_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+                    : 'Ainda não iniciado'}
+                </p>
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Encerramento do serviço</p>
+                <p className="text-muted-foreground">
+                  {ticket.service_finished_at
+                    ? format(new Date(ticket.service_finished_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+                    : 'Ainda não encerrado'}
+                </p>
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Produtividade</p>
+                <p className="text-muted-foreground">
+                  {formatDuration(getDurationMs(ticket.service_started_at, ticket.service_finished_at))}
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>

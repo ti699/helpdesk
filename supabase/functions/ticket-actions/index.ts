@@ -40,11 +40,30 @@ interface TicketRecord {
   solicitante_id: string;
   agente_id: string | null;
   resolved_at: string | null;
+  closed_at: string | null;
+  service_started_at: string | null;
+  service_finished_at: string | null;
 }
 
 interface Recipient {
   email: string;
   name: string;
+}
+
+interface ServiceExecutor {
+  id: string;
+  name: string;
+  specialty: string;
+  area: string;
+  active: boolean;
+}
+
+interface ServiceSession {
+  id: string;
+  ticket_id: string;
+  started_at: string;
+  finished_at: string | null;
+  notes: string | null;
 }
 
 class HttpError extends Error {
@@ -63,6 +82,9 @@ const emailFrom = Deno.env.get("EMAIL_FROM") || "Help Desk Astrotur <onboarding@
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
 const admin = createClient(supabaseUrl, supabaseServiceRoleKey);
+
+const ticketSelect =
+  "id, protocolo, titulo, descricao, status, prioridade, tipo, setor, solicitante_id, agente_id, resolved_at, closed_at, service_started_at, service_finished_at";
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -137,7 +159,7 @@ const getProfileByEmail = async (email: string) => {
 const getTicket = async (ticketId: string) => {
   const { data, error } = await admin
     .from("tickets")
-    .select("id, protocolo, titulo, descricao, status, prioridade, tipo, setor, solicitante_id, agente_id, resolved_at")
+    .select(ticketSelect)
     .eq("id", ticketId)
     .single();
 
@@ -214,6 +236,88 @@ const canCommentTicket = (userId: string, role: AppRole, ticket: TicketRecord) =
 
 const canUpdateTicketStatus = (role: AppRole, ticket: TicketRecord) =>
   role === "admin" || isTeamMemberForTicket(role, ticket.tipo);
+
+const parseActionDate = (value: unknown, fieldLabel: string) => {
+  const raw = typeof value === "string" ? value.trim() : "";
+  const date = raw ? new Date(raw) : new Date();
+
+  if (Number.isNaN(date.getTime())) {
+    throw new HttpError(400, `${fieldLabel} inválida`);
+  }
+
+  return date.toISOString();
+};
+
+const formatDateTime = (isoDate: string) =>
+  new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: "America/Recife",
+  }).format(new Date(isoDate));
+
+const formatDuration = (startIso: string, endIso: string) => {
+  const durationMs = new Date(endIso).getTime() - new Date(startIso).getTime();
+  if (durationMs < 0) return "Sem dados";
+
+  const totalMinutes = Math.max(1, Math.floor(durationMs / 60000));
+  const totalHours = Math.floor(totalMinutes / 60);
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  const minutes = totalMinutes % 60;
+
+  if (totalHours < 1) return `${totalMinutes}min`;
+  if (days < 1) return minutes > 0 ? `${totalHours}h ${minutes}min` : `${totalHours}h`;
+  return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+};
+
+const getOpenServiceSession = async (ticketId: string) => {
+  const { data, error } = await admin
+    .from("ticket_service_sessions")
+    .select("id, ticket_id, started_at, finished_at, notes")
+    .eq("ticket_id", ticketId)
+    .is("finished_at", null)
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(400, error.message);
+  }
+
+  return data as ServiceSession | null;
+};
+
+const getExecutorsForTicket = async (executorIds: unknown, ticket: TicketRecord) => {
+  if (!Array.isArray(executorIds) || executorIds.length === 0) {
+    throw new HttpError(400, "Selecione ao menos um executor do serviço");
+  }
+
+  const ids = [...new Set(executorIds.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (!ids.length) {
+    throw new HttpError(400, "Selecione ao menos um executor do serviço");
+  }
+
+  const { data, error } = await admin
+    .from("service_executors")
+    .select("id, name, specialty, area, active")
+    .in("id", ids);
+
+  if (error) {
+    throw new HttpError(400, error.message);
+  }
+
+  const executors = (data || []) as ServiceExecutor[];
+  if (executors.length !== ids.length) {
+    throw new HttpError(400, "Um ou mais executores não foram encontrados");
+  }
+
+  const invalidExecutor = executors.find((executor) => !executor.active || executor.area !== ticket.tipo);
+  if (invalidExecutor) {
+    throw new HttpError(400, `Executor inválido para este ticket: ${invalidExecutor.name}`);
+  }
+
+  return executors;
+};
 
 const getDepartmentRecipients = async (ticketType?: string | null): Promise<Recipient[]> => {
   if (!ticketType) return [];
@@ -380,7 +484,7 @@ const handleCreateTicket = async (
       prioridade: (payload.prioridade || "media") as TicketPriority,
       anexos: payload.anexos || { imagens: [], arquivos: [], audio: null },
     })
-    .select("id, protocolo, titulo, descricao, status, prioridade, tipo, setor, solicitante_id, agente_id, resolved_at")
+    .select(ticketSelect)
     .single();
 
   if (error || !data) {
@@ -474,27 +578,61 @@ const handleUpdateStatus = async (
   }
 
   const nowIso = new Date().toISOString();
+  const openServiceSession = newStatus === "resolvido"
+    ? await getOpenServiceSession(ticketId)
+    : null;
+
+  if (newStatus === "resolvido" && !openServiceSession) {
+    throw new HttpError(409, "Inicie o serviço e selecione o executor antes de resolver o ticket");
+  }
+
+  if (openServiceSession) {
+    const { error: finishSessionError } = await admin
+      .from("ticket_service_sessions")
+      .update({
+        finished_at: nowIso,
+        finished_by: context.user.id,
+      })
+      .eq("id", openServiceSession.id);
+
+    if (finishSessionError) {
+      throw new HttpError(400, finishSessionError.message);
+    }
+  }
+
   const updatePayload: {
     status: TicketStatus;
     closed_at: string | null;
     resolved_at: string | null;
+    service_started_at?: string | null;
+    service_finished_at?: string | null;
   } = {
     status: newStatus,
     closed_at: newStatus === "fechado" ? nowIso : null,
     resolved_at: null,
   };
 
-  if (newStatus === "resolvido") {
+  if (newStatus === "em_andamento") {
+    updatePayload.service_finished_at = null;
+  } else if (newStatus === "resolvido") {
     updatePayload.resolved_at = nowIso;
+    updatePayload.service_started_at = currentTicket.service_started_at || openServiceSession?.started_at || nowIso;
+    updatePayload.service_finished_at = currentTicket.service_finished_at || nowIso;
   } else if (newStatus === "fechado") {
     updatePayload.resolved_at = currentTicket.resolved_at || nowIso;
+    if (currentTicket.service_started_at) {
+      updatePayload.service_started_at = currentTicket.service_started_at;
+      updatePayload.service_finished_at = currentTicket.service_finished_at || nowIso;
+    }
+  } else if (newStatus === "aberto" || newStatus === "aguardando_resposta") {
+    updatePayload.service_finished_at = null;
   }
 
   const { data, error } = await admin
     .from("tickets")
     .update(updatePayload)
     .eq("id", ticketId)
-    .select("id, protocolo, titulo, descricao, status, prioridade, tipo, setor, solicitante_id, agente_id, resolved_at")
+    .select(ticketSelect)
     .single();
 
   if (error || !data) {
@@ -547,6 +685,234 @@ const handleUpdateStatus = async (
   return { ok: true, status: newStatus };
 };
 
+const handleStartService = async (
+  payload: Record<string, unknown>,
+  context: Awaited<ReturnType<typeof getUserAndRole>>,
+) => {
+  const ticketId = String(payload.ticketId || "");
+  if (!ticketId) {
+    throw new HttpError(400, "Ticket é obrigatório");
+  }
+
+  const ticket = await getTicket(ticketId);
+  if (!canUpdateTicketStatus(context.role, ticket)) {
+    throw new HttpError(403, "Você não tem permissão para iniciar serviço neste ticket");
+  }
+
+  if (ticket.status === "fechado") {
+    throw new HttpError(400, "Tickets fechados não aceitam início de serviço");
+  }
+
+  if (ticket.status === "resolvido") {
+    throw new HttpError(400, "Reabra o ticket antes de iniciar novo serviço");
+  }
+
+  const existingOpenSession = await getOpenServiceSession(ticketId);
+  if (existingOpenSession) {
+    throw new HttpError(409, "Este ticket já possui um serviço em andamento");
+  }
+
+  const startedAt = parseActionDate(payload.startedAt, "Data/hora inicial do serviço");
+  const notes = typeof payload.notes === "string" && payload.notes.trim()
+    ? payload.notes.trim()
+    : null;
+  const executors = await getExecutorsForTicket(payload.executorIds, ticket);
+
+  const { data: session, error: sessionError } = await admin
+    .from("ticket_service_sessions")
+    .insert({
+      ticket_id: ticketId,
+      started_at: startedAt,
+      started_by: context.user.id,
+      notes,
+    })
+    .select("id, ticket_id, started_at, finished_at, notes")
+    .single();
+
+  if (sessionError || !session) {
+    throw new HttpError(400, sessionError?.message || "Não foi possível iniciar o serviço");
+  }
+
+  const { error: executorError } = await admin
+    .from("ticket_service_session_executors")
+    .insert(executors.map((executor) => ({
+      session_id: session.id,
+      executor_id: executor.id,
+    })));
+
+  if (executorError) {
+    throw new HttpError(400, executorError.message);
+  }
+
+  const { data: updatedTicket, error: ticketError } = await admin
+    .from("tickets")
+    .update({
+      status: "em_andamento",
+      agente_id: ticket.agente_id || context.user.id,
+      service_started_at: ticket.service_started_at || startedAt,
+      service_finished_at: null,
+      resolved_at: null,
+      closed_at: null,
+    })
+    .eq("id", ticketId)
+    .select(ticketSelect)
+    .single();
+
+  if (ticketError || !updatedTicket) {
+    throw new HttpError(400, ticketError?.message || "Não foi possível atualizar o ticket");
+  }
+
+  const executorLabel = executors.map((executor) => `${executor.name} (${executor.specialty})`).join(", ");
+  const message = `Serviço iniciado em ${formatDateTime(startedAt)}. Executor(es): ${executorLabel}${notes ? `. Observação: ${notes}` : ""}`;
+
+  const { error: interactionError } = await admin.from("interactions").insert({
+    ticket_id: ticketId,
+    autor_id: context.user.id,
+    mensagem: message,
+    tipo: "mudanca_status",
+  });
+
+  if (interactionError) {
+    console.error("[ticket-actions] Failed to create service start interaction", interactionError);
+  }
+
+  const requester = await getTicketRequester(updatedTicket as TicketRecord);
+  const departmentRecipients = await getDepartmentRecipients(updatedTicket.tipo);
+
+  await sendEmails(
+    "status_updated",
+    buildTicketPayload(updatedTicket as TicketRecord, requester, {
+      newStatus: "em_andamento",
+      actorName: context.profile.nome,
+      messagePreview: message,
+    }),
+    [...requesterRecipient(requester), ...departmentRecipients],
+  );
+
+  return {
+    ok: true,
+    session: {
+      id: session.id,
+      started_at: startedAt,
+      executors,
+    },
+  };
+};
+
+const handleFinishService = async (
+  payload: Record<string, unknown>,
+  context: Awaited<ReturnType<typeof getUserAndRole>>,
+) => {
+  const ticketId = String(payload.ticketId || "");
+  if (!ticketId) {
+    throw new HttpError(400, "Ticket é obrigatório");
+  }
+
+  const ticket = await getTicket(ticketId);
+  if (!canUpdateTicketStatus(context.role, ticket)) {
+    throw new HttpError(403, "Você não tem permissão para encerrar serviço neste ticket");
+  }
+
+  if (ticket.status === "fechado") {
+    throw new HttpError(400, "Tickets fechados não aceitam encerramento de serviço");
+  }
+
+  const session = await getOpenServiceSession(ticketId);
+  if (!session) {
+    throw new HttpError(409, "Inicie o serviço antes de encerrar");
+  }
+
+  const finishedAt = parseActionDate(payload.finishedAt, "Data/hora final do serviço");
+  if (new Date(finishedAt).getTime() < new Date(session.started_at).getTime()) {
+    throw new HttpError(400, "A data/hora final não pode ser anterior ao início do serviço");
+  }
+
+  const notes = typeof payload.notes === "string" && payload.notes.trim()
+    ? payload.notes.trim()
+    : session.notes;
+
+  const { error: sessionError } = await admin
+    .from("ticket_service_sessions")
+    .update({
+      finished_at: finishedAt,
+      finished_by: context.user.id,
+      notes,
+    })
+    .eq("id", session.id);
+
+  if (sessionError) {
+    throw new HttpError(400, sessionError.message);
+  }
+
+  const { data: updatedTicket, error: ticketError } = await admin
+    .from("tickets")
+    .update({
+      status: "resolvido",
+      resolved_at: finishedAt,
+      service_started_at: ticket.service_started_at || session.started_at,
+      service_finished_at: finishedAt,
+      closed_at: null,
+    })
+    .eq("id", ticketId)
+    .select(ticketSelect)
+    .single();
+
+  if (ticketError || !updatedTicket) {
+    throw new HttpError(400, ticketError?.message || "Não foi possível encerrar o serviço");
+  }
+
+  const { data: executorRows } = await admin
+    .from("ticket_service_session_executors")
+    .select("executor_id")
+    .eq("session_id", session.id);
+
+  const executorIds = (executorRows || []).map((row) => row.executor_id);
+  let executorLabel = "Não informado";
+
+  if (executorIds.length) {
+    const { data: executors } = await admin
+      .from("service_executors")
+      .select("name, specialty")
+      .in("id", executorIds);
+
+    executorLabel = (executors || [])
+      .map((executor) => `${executor.name} (${executor.specialty})`)
+      .join(", ") || executorLabel;
+  }
+
+  const message = `Serviço encerrado em ${formatDateTime(finishedAt)}. Executor(es): ${executorLabel}. Tempo executado: ${formatDuration(session.started_at, finishedAt)}${notes ? `. Observação: ${notes}` : ""}`;
+
+  const { error: interactionError } = await admin.from("interactions").insert({
+    ticket_id: ticketId,
+    autor_id: context.user.id,
+    mensagem: message,
+    tipo: "mudanca_status",
+  });
+
+  if (interactionError) {
+    console.error("[ticket-actions] Failed to create service finish interaction", interactionError);
+  }
+
+  const requester = await getTicketRequester(updatedTicket as TicketRecord);
+  const departmentRecipients = await getDepartmentRecipients(updatedTicket.tipo);
+  const ticketPayload = buildTicketPayload(updatedTicket as TicketRecord, requester, {
+    newStatus: "resolvido",
+    actorName: context.profile.nome,
+    messagePreview: message,
+  });
+
+  await Promise.all([
+    sendEmails("feedback_request", ticketPayload, requesterRecipient(requester)),
+    sendEmails("ticket_activity", ticketPayload, departmentRecipients),
+  ]);
+
+  return {
+    ok: true,
+    status: "resolvido" as TicketStatus,
+    finished_at: finishedAt,
+  };
+};
+
 const handleReopenTicketFromFeedback = async (
   payload: Record<string, unknown>,
   context: Awaited<ReturnType<typeof getUserAndRole>>,
@@ -579,9 +945,11 @@ const handleReopenTicketFromFeedback = async (
       status: "aberto",
       resolved_at: null,
       closed_at: null,
+      service_started_at: null,
+      service_finished_at: null,
     })
     .eq("id", ticketId)
-    .select("id, protocolo, titulo, descricao, status, prioridade, tipo, setor, solicitante_id, agente_id, resolved_at")
+    .select(ticketSelect)
     .single();
 
   if (error || !data) {
@@ -650,6 +1018,10 @@ const handler = async (req: Request): Promise<Response> => {
           return handleAddMessage(body.payload || {}, context);
         case "update_status":
           return handleUpdateStatus(body.payload || {}, context);
+        case "start_service":
+          return handleStartService(body.payload || {}, context);
+        case "finish_service":
+          return handleFinishService(body.payload || {}, context);
         case "reopen_ticket_from_feedback":
           return handleReopenTicketFromFeedback(body.payload || {}, context);
         default:

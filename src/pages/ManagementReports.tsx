@@ -49,11 +49,18 @@ interface ManagementReportTicket {
   prioridade: string | null;
   setor: string | null;
   solicitante_id: string | null;
+  agente_id: string | null;
   solicitante_nome: string;
   solicitante_funcao: string;
+  agente_nome: string;
   created_at: string | null;
   resolved_at: string | null;
   closed_at: string | null;
+  service_started_at: string | null;
+  service_finished_at: string | null;
+  executor_names: string;
+  executor_specialties: string;
+  executor_ids: string[];
   feedback_nota: number | null;
 }
 
@@ -66,6 +73,25 @@ interface ProfileRow {
 interface FeedbackRow {
   ticket_id: string;
   nota_satisfacao: number | null;
+}
+
+interface ServiceExecutorRow {
+  id: string;
+  name: string;
+  specialty: string;
+  area: string;
+}
+
+interface ServiceSessionRow {
+  id: string;
+  ticket_id: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+interface ServiceSessionExecutorRow {
+  session_id: string;
+  executor_id: string;
 }
 
 const getRiskInfo = (ticket: ManagementReportTicket) => {
@@ -107,7 +133,7 @@ const getRiskInfo = (ticket: ManagementReportTicket) => {
 
 const getTicketTimeLabel = (ticket: ManagementReportTicket) => {
   if (ticket.status === 'resolvido' || ticket.status === 'fechado') {
-    return `Resolvido em ${formatDuration(getDurationMs(ticket.created_at, ticket.resolved_at || ticket.closed_at))}`;
+    return `Concluído em ${formatDuration(getDurationMs(ticket.created_at, ticket.service_finished_at || ticket.resolved_at || ticket.closed_at))}`;
   }
 
   return `Sem resolução há ${formatDuration(getDurationMs(ticket.created_at))}`;
@@ -130,6 +156,33 @@ const averageResolution = (tickets: ManagementReportTicket[], type: TicketType) 
   return durations.reduce((sum, duration) => sum + duration, 0) / durations.length;
 };
 
+const averageExecution = (tickets: ManagementReportTicket[], type: TicketType) => {
+  const durations = tickets
+    .filter((ticket) => ticket.tipo === type && ticket.service_started_at && ticket.service_finished_at)
+    .map((ticket) => getDurationMs(ticket.service_started_at, ticket.service_finished_at))
+    .filter((duration): duration is number => duration !== null);
+
+  if (!durations.length) return null;
+  return durations.reduce((sum, duration) => sum + duration, 0) / durations.length;
+};
+
+const averageWaiting = (tickets: ManagementReportTicket[], type: TicketType) => {
+  const durations = tickets
+    .filter((ticket) => ticket.tipo === type && ticket.service_started_at)
+    .map((ticket) => getDurationMs(ticket.created_at, ticket.service_started_at))
+    .filter((duration): duration is number => duration !== null);
+
+  if (!durations.length) return null;
+  return durations.reduce((sum, duration) => sum + duration, 0) / durations.length;
+};
+
+const hoursToMs = (value: string) => {
+  if (!value) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return parsed * 3600000;
+};
+
 export default function ManagementReports() {
   const { user, role, managementReportAccess, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -147,14 +200,25 @@ export default function ManagementReports() {
   const [periodoFim, setPeriodoFim] = useState(() => searchParams.get('periodoFim') || format(new Date(), 'yyyy-MM-dd'));
   const [fechadoInicio, setFechadoInicio] = useState(() => searchParams.get('fechadoInicio') || '');
   const [fechadoFim, setFechadoFim] = useState(() => searchParams.get('fechadoFim') || '');
+  const [servicoInicioDe, setServicoInicioDe] = useState(() => searchParams.get('servicoInicioDe') || '');
+  const [servicoInicioAte, setServicoInicioAte] = useState(() => searchParams.get('servicoInicioAte') || '');
+  const [servicoFimDe, setServicoFimDe] = useState(() => searchParams.get('servicoFimDe') || '');
+  const [servicoFimAte, setServicoFimAte] = useState(() => searchParams.get('servicoFimAte') || '');
   const [tipoFilter, setTipoFilter] = useState(() => searchParams.get('tipo') || 'all');
   const [requesterFilter, setRequesterFilter] = useState(() => searchParams.get('requester') || 'all');
   const [functionFilter, setFunctionFilter] = useState(() => searchParams.get('funcao') || 'all');
+  const [executorFilter, setExecutorFilter] = useState(() => searchParams.get('executor') || 'all');
+  const [executorFuncaoFilter, setExecutorFuncaoFilter] = useState(() => searchParams.get('executorFuncao') || 'all');
+  const [tempoExecucaoMin, setTempoExecucaoMin] = useState(() => searchParams.get('tempoExecucaoMin') || '');
+  const [tempoExecucaoMax, setTempoExecucaoMax] = useState(() => searchParams.get('tempoExecucaoMax') || '');
+  const [tempoResolucaoMin, setTempoResolucaoMin] = useState(() => searchParams.get('tempoResolucaoMin') || '');
+  const [tempoResolucaoMax, setTempoResolucaoMax] = useState(() => searchParams.get('tempoResolucaoMax') || '');
   const [statusFilters, setStatusFilters] = useState<TicketStatus[]>(() => (
     (searchParams.get('status') || '')
       .split(',')
       .filter((status): status is TicketStatus => statusOptions.includes(status as TicketStatus))
   ));
+  const [executorOptions, setExecutorOptions] = useState<ServiceExecutorRow[]>([]);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   const hasReportAccess = role === 'admin' || managementReportAccess;
@@ -170,8 +234,41 @@ export default function ManagementReports() {
     if (fechadoInicio && fechadoFim && new Date(`${fechadoInicio}T00:00:00`) > new Date(`${fechadoFim}T00:00:00`)) {
       return { valid: false, message: 'A data inicial de fechamento não pode ser maior que a data final.' };
     }
+    if ((servicoInicioDe && !isValidDateInput(servicoInicioDe)) || (servicoInicioAte && !isValidDateInput(servicoInicioAte))) {
+      return { valid: false, message: 'Informe datas de início do serviço válidas.' };
+    }
+    if (servicoInicioDe && servicoInicioAte && new Date(`${servicoInicioDe}T00:00:00`) > new Date(`${servicoInicioAte}T00:00:00`)) {
+      return { valid: false, message: 'A data inicial do serviço não pode ser maior que a data final.' };
+    }
+    if ((servicoFimDe && !isValidDateInput(servicoFimDe)) || (servicoFimAte && !isValidDateInput(servicoFimAte))) {
+      return { valid: false, message: 'Informe datas de fim do serviço válidas.' };
+    }
+    if (servicoFimDe && servicoFimAte && new Date(`${servicoFimDe}T00:00:00`) > new Date(`${servicoFimAte}T00:00:00`)) {
+      return { valid: false, message: 'A data inicial de fim do serviço não pode ser maior que a data final.' };
+    }
+    const numericFilters = [
+      ['tempo mínimo de execução', tempoExecucaoMin],
+      ['tempo máximo de execução', tempoExecucaoMax],
+      ['tempo mínimo de resolução', tempoResolucaoMin],
+      ['tempo máximo de resolução', tempoResolucaoMax],
+    ];
+    const invalidNumeric = numericFilters.find(([, value]) => value && hoursToMs(value) === null);
+    if (invalidNumeric) return { valid: false, message: `Informe um ${invalidNumeric[0]} válido.` };
     return { valid: true, message: '' };
-  }, [periodoInicio, periodoFim, fechadoInicio, fechadoFim]);
+  }, [
+    periodoInicio,
+    periodoFim,
+    fechadoInicio,
+    fechadoFim,
+    servicoInicioDe,
+    servicoInicioAte,
+    servicoFimDe,
+    servicoFimAte,
+    tempoExecucaoMin,
+    tempoExecucaoMax,
+    tempoResolucaoMin,
+    tempoResolucaoMax,
+  ]);
 
   useEffect(() => {
     if (!authLoading && !user) navigate('/auth');
@@ -185,7 +282,28 @@ export default function ManagementReports() {
     if (user && hasReportAccess) {
       fetchReportData();
     }
-  }, [user, hasReportAccess, periodoInicio, periodoFim, fechadoInicio, fechadoFim, tipoFilter, statusFilters.join(','), requesterFilter, functionFilter]);
+  }, [
+    user,
+    hasReportAccess,
+    periodoInicio,
+    periodoFim,
+    fechadoInicio,
+    fechadoFim,
+    servicoInicioDe,
+    servicoInicioAte,
+    servicoFimDe,
+    servicoFimAte,
+    tipoFilter,
+    statusFilters.join(','),
+    requesterFilter,
+    functionFilter,
+    executorFilter,
+    executorFuncaoFilter,
+    tempoExecucaoMin,
+    tempoExecucaoMax,
+    tempoResolucaoMin,
+    tempoResolucaoMax,
+  ]);
 
   const fetchAllTickets = async () => {
     const pageSize = 1000;
@@ -195,7 +313,7 @@ export default function ManagementReports() {
     while (true) {
       let query = supabase
         .from('tickets')
-        .select('id, protocolo, titulo, status, tipo, categoria, prioridade, setor, solicitante_id, created_at, resolved_at, closed_at')
+        .select('id, protocolo, titulo, status, tipo, categoria, prioridade, setor, solicitante_id, agente_id, created_at, resolved_at, closed_at, service_started_at, service_finished_at')
         .gte('created_at', periodoInicio)
         .lte('created_at', `${periodoFim}T23:59:59`)
         .order('created_at', { ascending: false })
@@ -205,6 +323,10 @@ export default function ManagementReports() {
       if (statusFilters.length > 0) query = query.in('status', statusFilters);
       if (fechadoInicio) query = query.gte('closed_at', fechadoInicio);
       if (fechadoFim) query = query.lte('closed_at', `${fechadoFim}T23:59:59`);
+      if (servicoInicioDe) query = query.gte('service_started_at', servicoInicioDe);
+      if (servicoInicioAte) query = query.lte('service_started_at', `${servicoInicioAte}T23:59:59`);
+      if (servicoFimDe) query = query.gte('service_finished_at', servicoFimDe);
+      if (servicoFimAte) query = query.lte('service_finished_at', `${servicoFimAte}T23:59:59`);
 
       const { data, error } = await query;
       if (error) throw error;
@@ -229,11 +351,14 @@ export default function ManagementReports() {
     try {
       const ticketRows = await fetchAllTickets();
       const ticketIds = ticketRows.map((ticket) => ticket.id);
-      const requesterIds = [...new Set(ticketRows.map((ticket) => ticket.solicitante_id).filter(Boolean))] as string[];
+      const profileIds = [...new Set(ticketRows.flatMap((ticket) => [ticket.solicitante_id, ticket.agente_id]).filter(Boolean))] as string[];
       let profiles: ProfileRow[] = [];
       let feedbacks: FeedbackRow[] = [];
+      let serviceSessions: ServiceSessionRow[] = [];
+      let sessionExecutorLinks: ServiceSessionExecutorRow[] = [];
+      let serviceExecutors: ServiceExecutorRow[] = [];
 
-      for (const ids of chunk(requesterIds, 500)) {
+      for (const ids of chunk(profileIds, 500)) {
         const { data, error } = await supabase
           .from('profiles')
           .select('id, nome, funcao')
@@ -253,6 +378,38 @@ export default function ManagementReports() {
         feedbacks = [...feedbacks, ...((data || []) as FeedbackRow[])];
       }
 
+      for (const ids of chunk(ticketIds, 500)) {
+        const { data, error } = await supabase
+          .from('ticket_service_sessions')
+          .select('id, ticket_id, started_at, finished_at')
+          .in('ticket_id', ids);
+
+        if (error) throw error;
+        serviceSessions = [...serviceSessions, ...((data || []) as ServiceSessionRow[])];
+      }
+
+      const sessionIds = serviceSessions.map((session) => session.id);
+      for (const ids of chunk(sessionIds, 500)) {
+        const { data, error } = await supabase
+          .from('ticket_service_session_executors')
+          .select('session_id, executor_id')
+          .in('session_id', ids);
+
+        if (error) throw error;
+        sessionExecutorLinks = [...sessionExecutorLinks, ...((data || []) as ServiceSessionExecutorRow[])];
+      }
+
+      const executorIds = [...new Set(sessionExecutorLinks.map((link) => link.executor_id))];
+      for (const ids of chunk(executorIds, 500)) {
+        const { data, error } = await supabase
+          .from('service_executors')
+          .select('id, name, specialty, area')
+          .in('id', ids);
+
+        if (error) throw error;
+        serviceExecutors = [...serviceExecutors, ...((data || []) as ServiceExecutorRow[])];
+      }
+
       const profilesById = new Map(profiles.map((profile) => [
         profile.id,
         {
@@ -261,16 +418,42 @@ export default function ManagementReports() {
         },
       ]));
       const feedbackByTicketId = new Map(feedbacks.map((feedback) => [feedback.ticket_id, feedback.nota_satisfacao || null]));
+      const executorsById = new Map(serviceExecutors.map((executor) => [executor.id, executor]));
+      const sessionIdsByTicketId = new Map<string, string[]>();
+      serviceSessions.forEach((session) => {
+        const current = sessionIdsByTicketId.get(session.ticket_id) || [];
+        sessionIdsByTicketId.set(session.ticket_id, [...current, session.id]);
+      });
+
+      const executorIdsBySessionId = new Map<string, string[]>();
+      sessionExecutorLinks.forEach((link) => {
+        const current = executorIdsBySessionId.get(link.session_id) || [];
+        executorIdsBySessionId.set(link.session_id, [...current, link.executor_id]);
+      });
 
       const enriched = ticketRows.map((ticket) => {
         const profile = ticket.solicitante_id ? profilesById.get(ticket.solicitante_id) : null;
+        const ticketExecutorIds = [...new Set((sessionIdsByTicketId.get(ticket.id) || []).flatMap((sessionId) => executorIdsBySessionId.get(sessionId) || []))];
+        const ticketExecutors = ticketExecutorIds
+          .map((executorId) => executorsById.get(executorId))
+          .filter((executor): executor is ServiceExecutorRow => Boolean(executor));
+
         return {
           ...ticket,
           solicitante_nome: profile?.nome || 'Não informado',
           solicitante_funcao: profile?.funcao || 'Não informado',
+          agente_nome: ticket.agente_id ? profilesById.get(ticket.agente_id)?.nome || 'Não informado' : 'Não atribuído',
+          executor_names: ticketExecutors.map((executor) => executor.name).join(', ') || 'Não informado',
+          executor_specialties: [...new Set(ticketExecutors.map((executor) => executor.specialty))].join(', ') || 'Não informado',
+          executor_ids: ticketExecutorIds,
           feedback_nota: feedbackByTicketId.get(ticket.id) || null,
         };
       }) as ManagementReportTicket[];
+
+      const executionMinMs = hoursToMs(tempoExecucaoMin);
+      const executionMaxMs = hoursToMs(tempoExecucaoMax);
+      const resolutionMinMs = hoursToMs(tempoResolucaoMin);
+      const resolutionMaxMs = hoursToMs(tempoResolucaoMax);
 
       setRequesterOptions([...new Map(
         enriched
@@ -279,11 +462,23 @@ export default function ManagementReports() {
       ).values()].sort((a, b) => a.nome.localeCompare(b.nome)));
       setFunctionOptions([...new Set(enriched.map((ticket) => ticket.solicitante_funcao).filter(Boolean))]
         .sort((a, b) => a.localeCompare(b)));
+      setExecutorOptions([...new Map(serviceExecutors.map((executor) => [executor.id, executor])).values()]
+        .sort((a, b) => a.name.localeCompare(b.name)));
 
       setTickets(enriched.filter((ticket) => {
-        const matchesRequester = requesterFilter === 'all' || ticket.solicitante_id === requesterFilter;
-        const matchesFunction = functionFilter === 'all' || ticket.solicitante_funcao === functionFilter;
-        return matchesRequester && matchesFunction;
+        if (requesterFilter !== 'all' && ticket.solicitante_id !== requesterFilter) return false;
+        if (functionFilter !== 'all' && ticket.solicitante_funcao !== functionFilter) return false;
+        if (executorFilter !== 'all' && !ticket.executor_ids.includes(executorFilter)) return false;
+        if (executorFuncaoFilter !== 'all' && !ticket.executor_specialties.split(', ').includes(executorFuncaoFilter)) return false;
+
+        const executionMs = getDurationMs(ticket.service_started_at, ticket.service_finished_at);
+        const resolutionMs = getDurationMs(ticket.created_at, ticket.service_finished_at || ticket.resolved_at || ticket.closed_at);
+        if (executionMinMs !== null && (executionMs === null || executionMs < executionMinMs)) return false;
+        if (executionMaxMs !== null && (executionMs === null || executionMs > executionMaxMs)) return false;
+        if (resolutionMinMs !== null && (resolutionMs === null || resolutionMs < resolutionMinMs)) return false;
+        if (resolutionMaxMs !== null && (resolutionMs === null || resolutionMs > resolutionMaxMs)) return false;
+
+        return true;
       }));
       setHasLoadedOnce(true);
     } catch (error) {
@@ -319,18 +514,28 @@ export default function ManagementReports() {
       satisfaction: Math.round(satisfaction * 10) / 10,
       mediaTi: averageResolution(tickets, 'TI'),
       mediaManutencao: averageResolution(tickets, 'Manutenção predial'),
+      execucaoTi: averageExecution(tickets, 'TI'),
+      execucaoManutencao: averageExecution(tickets, 'Manutenção predial'),
+      esperaTi: averageWaiting(tickets, 'TI'),
+      esperaManutencao: averageWaiting(tickets, 'Manutenção predial'),
       statusRows: countByGeneric(tickets, (ticket) => ticket.status ? statusLabels[ticket.status] : 'Não informado', 10),
       priorityRows: countByGeneric(tickets, (ticket) => formatPriority(ticket.prioridade), 10),
       areaRows: countByGeneric(tickets, (ticket) => ticket.tipo, 10),
       categoryRows: countByGeneric(tickets, (ticket) => ticket.categoria),
       sectorRows: countByGeneric(tickets, (ticket) => ticket.setor),
       requesterRows: countByGeneric(tickets, (ticket) => ticket.solicitante_nome),
+      executorRows: countByGeneric(tickets, (ticket) => ticket.executor_names, 10),
       oldestUnresolved: riskItems
         .filter((item) => item.ticket.status && unresolvedStatuses.includes(item.ticket.status))
         .sort((a, b) => b.durationMs - a.durationMs)
         .slice(0, 8),
     };
   }, [tickets]);
+
+  const executorSpecialtyOptions = useMemo(
+    () => [...new Set(executorOptions.map((executor) => executor.specialty).filter(Boolean))].sort(),
+    [executorOptions],
+  );
 
   const exportPDF = () => {
     if (!periodValidation.valid) return;
@@ -358,9 +563,13 @@ export default function ManagementReports() {
     const fechamentoLabel = fechadoInicio || fechadoFim
       ? `Fechamento: ${fechadoInicio ? format(new Date(`${fechadoInicio}T00:00:00`), 'dd/MM/yyyy') : 'início'} até ${fechadoFim ? format(new Date(`${fechadoFim}T00:00:00`), 'dd/MM/yyyy') : 'hoje'}`
       : 'Fechamento: não filtrado';
+    const servicoLabel = servicoInicioDe || servicoInicioAte || servicoFimDe || servicoFimAte
+      ? `Serviço: início ${servicoInicioDe || 'livre'} até ${servicoInicioAte || 'livre'} | fim ${servicoFimDe || 'livre'} até ${servicoFimAte || 'livre'}`
+      : 'Serviço: não filtrado';
     doc.text(`Período: ${format(new Date(`${periodoInicio}T00:00:00`), 'dd/MM/yyyy')} até ${format(new Date(`${periodoFim}T00:00:00`), 'dd/MM/yyyy')}`, marginX, 38);
     doc.text(fechamentoLabel, marginX, 44);
-    doc.text(`Solicitante: ${requesterFilter === 'all' ? 'Todos' : requesterOptions.find((option) => option.id === requesterFilter)?.nome || 'Selecionado'} | Função: ${functionFilter === 'all' ? 'Todas' : functionFilter}`, marginX, 50);
+    doc.text(servicoLabel, marginX, 50);
+    doc.text(`Solicitante: ${requesterFilter === 'all' ? 'Todos' : requesterOptions.find((option) => option.id === requesterFilter)?.nome || 'Selecionado'} | Função: ${functionFilter === 'all' ? 'Todas' : functionFilter}`, marginX, 56);
 
     const summary = [
       ['Tickets', stats.total, [31, 41, 55]],
@@ -399,8 +608,12 @@ export default function ManagementReports() {
         ['Aguardando resposta', stats.aguardando],
         ['Resolvidos', stats.resolvidos],
         ['Fechados', stats.fechados],
-        ['Tempo médio TI', formatDuration(stats.mediaTi)],
-        ['Tempo médio Manutenção', formatDuration(stats.mediaManutencao)],
+        ['Resolução média TI', formatDuration(stats.mediaTi)],
+        ['Resolução média Manutenção', formatDuration(stats.mediaManutencao)],
+        ['Execução média TI', formatDuration(stats.execucaoTi)],
+        ['Execução média Manutenção', formatDuration(stats.execucaoManutencao)],
+        ['Espera média TI', formatDuration(stats.esperaTi)],
+        ['Espera média Manutenção', formatDuration(stats.esperaManutencao)],
       ],
       tableWidth: 82,
       margin: { left: marginX },
@@ -446,7 +659,6 @@ export default function ManagementReports() {
 
     autoTable(doc, {
       startY: 26,
-      margin: { left: 8, right: 8 },
       head: [['Protocolo', 'Título', 'Área', 'Prioridade', 'Sinalização']],
       body: stats.oldestUnresolved.length
         ? stats.oldestUnresolved.map(({ ticket, risk }) => [
@@ -454,7 +666,7 @@ export default function ManagementReports() {
             truncateReportText(ticket.titulo, 70),
             sanitizeReportText(ticket.tipo),
             formatPriority(ticket.prioridade),
-            getDelayLabel(ticket, risk),
+            risk.label,
           ])
         : [['-', 'Nenhum ticket sem resolução no filtro atual', '-', '-', '-']],
       styles: { fontSize: 8, cellPadding: 2 },
@@ -493,6 +705,17 @@ export default function ManagementReports() {
       headStyles: { fillColor: [51, 65, 85] },
     });
 
+    const afterRankingY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY || afterIssuesY + 60;
+    autoTable(doc, {
+      startY: afterRankingY + 8,
+      head: [['Executor', 'Qtd.', '%']],
+      body: stats.executorRows.map((row) => [row.label, row.count, `${row.percent}%`]),
+      tableWidth: 120,
+      margin: { left: marginX },
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [15, 118, 110] },
+    });
+
     doc.addPage();
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(17, 24, 39);
@@ -501,49 +724,50 @@ export default function ManagementReports() {
 
     autoTable(doc, {
       startY: 26,
-      margin: { left: 8, right: 8 },
-      head: [['Prot.', 'Título', 'Status', 'Prior.', 'Área', 'Cat.', 'Setor', 'Solic.', 'Função', 'Abert.', 'Tempo', 'Nota', 'Atraso']],
+      margin: { left: 6, right: 6 },
+      head: [['Prot.', 'Título', 'Status', 'Prior.', 'Área', 'Setor', 'Solic./Agente', 'Executor', 'Abert.', 'Serviço', 'Exec.', 'Resol.', 'SLA']],
       body: tickets.length
         ? tickets.map((ticket) => {
             const risk = getRiskInfo(ticket);
+            const serviceLabel = `${ticket.service_started_at ? format(new Date(ticket.service_started_at), 'dd/MM HH:mm') : '-'} > ${ticket.service_finished_at ? format(new Date(ticket.service_finished_at), 'dd/MM HH:mm') : '-'}`;
             return [
               sanitizeReportText(ticket.protocolo),
-              truncateReportText(ticket.titulo, 42),
+              truncateReportText(ticket.titulo, 34),
               ticket.status ? statusLabels[ticket.status] : 'Não informado',
               formatPriority(ticket.prioridade),
               sanitizeReportText(ticket.tipo),
-              truncateReportText(ticket.categoria, 22),
               truncateReportText(ticket.setor, 22),
-              truncateReportText(ticket.solicitante_nome, 28),
-              truncateReportText(ticket.solicitante_funcao, 22),
+              truncateReportText(`${ticket.solicitante_nome} / ${ticket.agente_nome}`, 24),
+              truncateReportText(ticket.executor_names, 26),
               ticket.created_at ? format(new Date(ticket.created_at), 'dd/MM/yyyy HH:mm') : 'Sem data',
-              getTicketTimeLabel(ticket),
-              ticket.feedback_nota ? `${ticket.feedback_nota}/5` : '-',
-              getDelayLabel(ticket, risk),
+              serviceLabel,
+              formatDuration(getDurationMs(ticket.service_started_at, ticket.service_finished_at)),
+              getTicketTimeLabel(ticket).replace('Sem resolução há ', '').replace('Concluído em ', ''),
+              risk.label,
             ];
           })
         : [['Sem tickets no filtro atual', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-']],
       styles: {
-        fontSize: 5.9,
-        cellPadding: { top: 1.2, right: 0.8, bottom: 1.2, left: 0.8 },
+        fontSize: 5.6,
+        cellPadding: { top: 1, right: 0.7, bottom: 1, left: 0.7 },
         overflow: 'linebreak',
         valign: 'middle',
       },
       headStyles: { fillColor: [196, 24, 31], fontSize: 6, minCellHeight: 7 },
       columnStyles: {
         0: { cellWidth: 15 },
-        1: { cellWidth: 29 },
+        1: { cellWidth: 30 },
         2: { cellWidth: 17 },
         3: { cellWidth: 14 },
         4: { cellWidth: 19 },
-        5: { cellWidth: 18 },
-        6: { cellWidth: 17 },
+        5: { cellWidth: 17 },
+        6: { cellWidth: 23 },
         7: { cellWidth: 24 },
-        8: { cellWidth: 17 },
-        9: { cellWidth: 19 },
-        10: { cellWidth: 22 },
-        11: { cellWidth: 9 },
-        12: { cellWidth: 16 },
+        8: { cellWidth: 20 },
+        9: { cellWidth: 26 },
+        10: { cellWidth: 15 },
+        11: { cellWidth: 15 },
+        12: { cellWidth: 21 },
       },
       didParseCell: (data) => {
         if (data.section !== 'body' || data.column.index !== 12) return;
@@ -624,7 +848,7 @@ export default function ManagementReports() {
               O PDF usa exatamente os filtros e indicadores exibidos nesta prévia.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-2 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+          <CardContent className="grid gap-2 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
             <div className="space-y-1">
               <Label className="text-xs">Abertura início</Label>
               <Input className="h-9" type="date" value={periodoInicio} onChange={(event) => setPeriodoInicio(event.target.value)} />
@@ -640,6 +864,22 @@ export default function ManagementReports() {
             <div className="space-y-1">
               <Label className="text-xs">Fechado até</Label>
               <Input className="h-9" type="date" value={fechadoFim} onChange={(event) => setFechadoFim(event.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Serviço início de</Label>
+              <Input className="h-9" type="date" value={servicoInicioDe} onChange={(event) => setServicoInicioDe(event.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Serviço início até</Label>
+              <Input className="h-9" type="date" value={servicoInicioAte} onChange={(event) => setServicoInicioAte(event.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Serviço fim de</Label>
+              <Input className="h-9" type="date" value={servicoFimDe} onChange={(event) => setServicoFimDe(event.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Serviço fim até</Label>
+              <Input className="h-9" type="date" value={servicoFimAte} onChange={(event) => setServicoFimAte(event.target.value)} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Área</Label>
@@ -685,13 +925,53 @@ export default function ManagementReports() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Executor</Label>
+              <Select value={executorFilter} onValueChange={setExecutorFilter}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {executorOptions.map((executor) => (
+                    <SelectItem key={executor.id} value={executor.id}>{executor.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Função executor</Label>
+              <Select value={executorFuncaoFilter} onValueChange={setExecutorFuncaoFilter}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {executorSpecialtyOptions.map((specialty) => (
+                    <SelectItem key={specialty} value={specialty}>{specialty}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Execução mín. (h)</Label>
+              <Input className="h-9" type="number" min="0" value={tempoExecucaoMin} onChange={(event) => setTempoExecucaoMin(event.target.value)} placeholder="Opcional" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Execução máx. (h)</Label>
+              <Input className="h-9" type="number" min="0" value={tempoExecucaoMax} onChange={(event) => setTempoExecucaoMax(event.target.value)} placeholder="Opcional" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Resolução mín. (h)</Label>
+              <Input className="h-9" type="number" min="0" value={tempoResolucaoMin} onChange={(event) => setTempoResolucaoMin(event.target.value)} placeholder="Opcional" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Resolução máx. (h)</Label>
+              <Input className="h-9" type="number" min="0" value={tempoResolucaoMax} onChange={(event) => setTempoResolucaoMax(event.target.value)} placeholder="Opcional" />
+            </div>
             {!periodValidation.valid && (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/20 dark:text-amber-200 sm:col-span-2 lg:col-span-6">
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/20 dark:text-amber-200 sm:col-span-2 lg:col-span-4 xl:col-span-6">
                 {periodValidation.message}
               </div>
             )}
             {loading && hasLoadedOnce && periodValidation.valid && (
-              <div className="flex items-center gap-2 rounded-lg border bg-muted/50 p-3 text-sm text-muted-foreground sm:col-span-2 lg:col-span-6">
+              <div className="flex items-center gap-2 rounded-lg border bg-muted/50 p-3 text-sm text-muted-foreground sm:col-span-2 lg:col-span-4 xl:col-span-6">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Atualizando relatório...
               </div>
@@ -717,16 +997,24 @@ export default function ManagementReports() {
           <SlimMetricCard title="Médias" value={`${formatDuration(stats.mediaTi)} / ${formatDuration(stats.mediaManutencao)}`} description="TI / Manutenção" icon={<Clock className="h-4 w-4" />} tone="blue" />
         </section>
 
+        <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <SlimMetricCard title="Execução TI" value={formatDuration(stats.execucaoTi)} icon={<Clock className="h-4 w-4" />} tone="blue" />
+          <SlimMetricCard title="Execução Manutenção" value={formatDuration(stats.execucaoManutencao)} icon={<Clock className="h-4 w-4" />} tone="green" />
+          <SlimMetricCard title="Espera TI" value={formatDuration(stats.esperaTi)} description="até iniciar serviço" icon={<Clock className="h-4 w-4" />} tone="blue" />
+          <SlimMetricCard title="Espera Manutenção" value={formatDuration(stats.esperaManutencao)} description="até iniciar serviço" icon={<Clock className="h-4 w-4" />} tone="green" />
+        </section>
+
         <section className="grid gap-4 lg:grid-cols-3">
           <RankingBlock title="Distribuição por status" rows={stats.statusRows} />
           <RankingBlock title="Distribuição por prioridade" rows={stats.priorityRows} />
           <RankingBlock title="Comparação por área" rows={stats.areaRows} />
         </section>
 
-        <section className="grid gap-4 lg:grid-cols-3">
+        <section className="grid gap-4 lg:grid-cols-4">
           <RankingBlock title="Ranking por categoria" rows={stats.categoryRows} />
           <RankingBlock title="Ranking por setor" rows={stats.sectorRows} />
           <RankingBlock title="Ranking por solicitante" rows={stats.requesterRows} />
+          <RankingBlock title="Ranking por executor" rows={stats.executorRows} />
         </section>
 
         <Card>
@@ -769,8 +1057,13 @@ export default function ManagementReports() {
                   <TableHead>Prioridade</TableHead>
                   <TableHead>Solicitante</TableHead>
                   <TableHead>Função</TableHead>
+                  <TableHead>Agente</TableHead>
+                  <TableHead>Executor</TableHead>
                   <TableHead>Setor</TableHead>
                   <TableHead>Abertura</TableHead>
+                  <TableHead>Início serviço</TableHead>
+                  <TableHead>Fim serviço</TableHead>
+                  <TableHead>Execução</TableHead>
                   <TableHead>Tempo</TableHead>
                   <TableHead>Nota</TableHead>
                   <TableHead>Sinalização</TableHead>
@@ -788,8 +1081,13 @@ export default function ManagementReports() {
                       <TableCell>{formatPriority(ticket.prioridade)}</TableCell>
                       <TableCell>{ticket.solicitante_nome}</TableCell>
                       <TableCell>{ticket.solicitante_funcao}</TableCell>
+                      <TableCell>{ticket.agente_nome}</TableCell>
+                      <TableCell>{ticket.executor_names}</TableCell>
                       <TableCell>{ticket.setor || 'Não informado'}</TableCell>
                       <TableCell>{ticket.created_at ? format(new Date(ticket.created_at), 'dd/MM/yyyy HH:mm') : 'Sem data'}</TableCell>
+                      <TableCell>{ticket.service_started_at ? format(new Date(ticket.service_started_at), 'dd/MM/yyyy HH:mm') : '-'}</TableCell>
+                      <TableCell>{ticket.service_finished_at ? format(new Date(ticket.service_finished_at), 'dd/MM/yyyy HH:mm') : '-'}</TableCell>
+                      <TableCell>{formatDuration(getDurationMs(ticket.service_started_at, ticket.service_finished_at))}</TableCell>
                       <TableCell>{getTicketTimeLabel(ticket)}</TableCell>
                       <TableCell>{ticket.feedback_nota ? `${ticket.feedback_nota}/5` : '-'}</TableCell>
                       <TableCell>
@@ -799,7 +1097,7 @@ export default function ManagementReports() {
                   );
                 }) : (
                   <TableRow>
-                    <TableCell colSpan={12} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={17} className="py-8 text-center text-muted-foreground">
                       Nenhum ticket encontrado para os filtros selecionados.
                     </TableCell>
                   </TableRow>

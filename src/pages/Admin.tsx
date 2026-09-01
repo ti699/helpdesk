@@ -5,10 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AccountMenu } from '@/components/AccountMenu';
-import { ArrowLeft, BarChart3, Loader2, Users, Mail } from 'lucide-react';
+import { ArrowLeft, BarChart3, Loader2, Users, Mail, UserRoundCog } from 'lucide-react';
 import { UserManagement } from '@/components/admin/UserManagement';
 import { InvitationManagement } from '@/components/admin/InvitationManagement';
 import { DepartmentEmailManagement } from '@/components/admin/DepartmentEmailManagement';
+import { ServiceExecutorManagement } from '@/components/admin/ServiceExecutorManagement';
 
 export default function Admin() {
   const { user, role, loading: authLoading } = useAuth();
@@ -81,7 +82,7 @@ export default function Admin() {
       {/* Main Content */}
       <main className="container px-3 sm:px-4 py-4 sm:py-6">
         <Tabs defaultValue="usuarios" className="w-full">
-          <TabsList className="mb-4 sm:mb-6 grid w-full max-w-xl grid-cols-3">
+          <TabsList className="mb-4 sm:mb-6 grid w-full max-w-2xl grid-cols-4">
             <TabsTrigger value="usuarios" className="flex items-center gap-2 text-xs sm:text-sm">
               <Users className="h-4 w-4" />
               <span className="hidden xs:inline">Usuários</span>
@@ -96,6 +97,11 @@ export default function Admin() {
               <Mail className="h-4 w-4" />
               <span>E-mails</span>
             </TabsTrigger>
+            <TabsTrigger value="executores" className="flex items-center gap-2 text-xs sm:text-sm">
+              <UserRoundCog className="h-4 w-4" />
+              <span className="hidden xs:inline">Executores</span>
+              <span className="xs:hidden">Exec.</span>
+            </TabsTrigger>
           </TabsList>
           
           <TabsContent value="usuarios">
@@ -108,6 +114,10 @@ export default function Admin() {
 
           <TabsContent value="emails">
             <DepartmentEmailManagement />
+          </TabsContent>
+
+          <TabsContent value="executores">
+            <ServiceExecutorManagement />
           </TabsContent>
         </Tabs>
       </main>

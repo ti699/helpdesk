@@ -46,6 +46,8 @@ interface TicketData {
   created_at: string;
   resolved_at: string | null;
   closed_at: string | null;
+  service_started_at: string | null;
+  service_finished_at: string | null;
   solicitante: {
     id: string;
     nome: string;
@@ -187,6 +189,8 @@ export default function Dashboard() {
     satisfacaoMedia: 0,
     mediaResolucaoTi: null as number | null,
     mediaResolucaoManutencao: null as number | null,
+    mediaExecucaoTi: null as number | null,
+    mediaExecucaoManutencao: null as number | null,
   });
 
   // Determine team type based on role
@@ -246,6 +250,8 @@ export default function Dashboard() {
           created_at,
           resolved_at,
           closed_at,
+          service_started_at,
+          service_finished_at,
           solicitante_id
         `)
         .order('created_at', { ascending: false });
@@ -451,9 +457,56 @@ export default function Dashboard() {
         return durations.reduce((sum, duration) => sum + duration, 0) / durations.length;
       };
 
-      const [mediaResolucaoTi, mediaResolucaoManutencao] = await Promise.all([
+      const fetchAverageExecution = async (ticketType: 'TI' | 'Manutenção predial') => {
+        if (teamType && teamType !== ticketType) return null;
+        if (!teamType && tipoFilter !== 'all' && tipoFilter !== ticketType) return null;
+
+        let executionQuery = supabase
+          .from('tickets')
+          .select('service_started_at, service_finished_at, closed_at')
+          .eq('tipo', ticketType)
+          .not('service_started_at', 'is', null)
+          .not('service_finished_at', 'is', null);
+
+        if (setorFilter && setorFilter !== 'all') {
+          executionQuery = executionQuery.eq('setor', setorFilter);
+        }
+
+        if (periodoInicio) {
+          executionQuery = executionQuery.gte('service_finished_at', periodoInicio);
+        } else {
+          executionQuery = executionQuery.gte('service_finished_at', firstDayOfMonth.toISOString());
+        }
+
+        if (periodoFim) {
+          executionQuery = executionQuery.lte('service_finished_at', periodoFim + 'T23:59:59');
+        }
+
+        if (fechadoInicio) {
+          executionQuery = executionQuery.gte('closed_at', fechadoInicio);
+        }
+
+        if (fechadoFim) {
+          executionQuery = executionQuery.lte('closed_at', fechadoFim + 'T23:59:59');
+        }
+
+        const { data, error } = await executionQuery.limit(1000);
+        if (error || !data?.length) return null;
+
+        const durations = data
+          .map((ticket) => getDurationMs(ticket.service_started_at, ticket.service_finished_at))
+          .filter((duration): duration is number => duration !== null);
+
+        if (!durations.length) return null;
+
+        return durations.reduce((sum, duration) => sum + duration, 0) / durations.length;
+      };
+
+      const [mediaResolucaoTi, mediaResolucaoManutencao, mediaExecucaoTi, mediaExecucaoManutencao] = await Promise.all([
         fetchAverageResolution('TI'),
         fetchAverageResolution('Manutenção predial'),
+        fetchAverageExecution('TI'),
+        fetchAverageExecution('Manutenção predial'),
       ]);
 
       setStats({
@@ -463,6 +516,8 @@ export default function Dashboard() {
         satisfacaoMedia: Math.round(satisfacaoMedia * 10) / 10,
         mediaResolucaoTi,
         mediaResolucaoManutencao,
+        mediaExecucaoTi,
+        mediaExecucaoManutencao,
       });
     } catch (error) {
       console.error('Error fetching stats:', error);

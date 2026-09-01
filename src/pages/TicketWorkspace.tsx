@@ -4,6 +4,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -25,12 +28,16 @@ import {
   Phone,
   Building,
   Mail,
-  Settings2
+  Settings2,
+  CalendarClock,
+  CheckCircle2,
+  TimerReset,
+  UserRoundCog
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { getSignedUrl, getSignedUrls } from '@/lib/storage';
-import { addTicketMessage, updateTicketStatus } from '@/lib/ticketActions';
+import { addTicketMessage, finishTicketService, startTicketService, updateTicketStatus } from '@/lib/ticketActions';
 
 type TicketStatus = 'aberto' | 'em_andamento' | 'aguardando_resposta' | 'resolvido' | 'fechado';
 type TicketPriority = 'baixa' | 'media' | 'alta' | 'critica';
@@ -65,6 +72,37 @@ const getDayLabel = (date: Date) => {
   return format(date, 'dd/MM/yyyy', { locale: ptBR });
 };
 
+const toDateTimeLocal = (date = new Date()) => {
+  const offsetMs = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+};
+
+const dateTimeLocalToIso = (value: string) => {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+};
+
+const getDurationMs = (start?: string | null, end?: string | null) => {
+  if (!start || !end) return null;
+  const startTime = new Date(start).getTime();
+  const endTime = new Date(end).getTime();
+  if (Number.isNaN(startTime) || Number.isNaN(endTime) || endTime < startTime) return null;
+  return endTime - startTime;
+};
+
+const formatDuration = (durationMs: number | null) => {
+  if (durationMs === null) return 'Sem dados';
+  const totalMinutes = Math.max(1, Math.floor(durationMs / 60000));
+  const totalHours = Math.floor(totalMinutes / 60);
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  const minutes = totalMinutes % 60;
+  if (totalHours < 1) return `${totalMinutes}min`;
+  if (days < 1) return minutes > 0 ? `${totalHours}h ${minutes}min` : `${totalHours}h`;
+  return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+};
+
 // Interface completa
 interface TicketData {
   id: string;
@@ -81,6 +119,10 @@ interface TicketData {
     audio: string | null;
   };
   created_at: string;
+  service_started_at: string | null;
+  service_finished_at: string | null;
+  resolved_at: string | null;
+  closed_at: string | null;
   agente_id: string | null;
   solicitante: {
     id: string;
@@ -91,6 +133,22 @@ interface TicketData {
     setor: string | null;
     foto_perfil: string | null;
   } | null;
+}
+
+interface ServiceExecutor {
+  id: string;
+  name: string;
+  specialty: string;
+  area: string;
+  active: boolean;
+}
+
+interface ServiceSession {
+  id: string;
+  started_at: string;
+  finished_at: string | null;
+  notes: string | null;
+  executors: ServiceExecutor[];
 }
 
 interface Interaction {
@@ -120,6 +178,13 @@ export default function TicketWorkspace() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [updatingPriority, setUpdatingPriority] = useState(false);
+  const [serviceExecutors, setServiceExecutors] = useState<ServiceExecutor[]>([]);
+  const [serviceSessions, setServiceSessions] = useState<ServiceSession[]>([]);
+  const [selectedExecutorIds, setSelectedExecutorIds] = useState<string[]>([]);
+  const [serviceStartedAt, setServiceStartedAt] = useState(toDateTimeLocal());
+  const [serviceFinishedAt, setServiceFinishedAt] = useState(toDateTimeLocal());
+  const [serviceNotes, setServiceNotes] = useState('');
+  const [updatingService, setUpdatingService] = useState(false);
   const [signedUrls, setSignedUrls] = useState<{ imagens: any[], arquivos: any[], audio: any }>({ imagens: [], arquivos: [], audio: null });
   
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -129,8 +194,15 @@ export default function TicketWorkspace() {
     if (id) {
       fetchTicket();
       fetchInteractions();
+      fetchServiceSessions();
     }
   }, [id]);
+
+  useEffect(() => {
+    if (ticket?.tipo) {
+      fetchServiceExecutors(ticket.tipo);
+    }
+  }, [ticket?.tipo]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -175,12 +247,74 @@ export default function TicketWorkspace() {
 
       if (error) throw error;
       setTicket(data as unknown as TicketData);
+      if ((data as any).service_started_at) {
+        setServiceStartedAt(toDateTimeLocal(new Date((data as any).service_started_at)));
+      }
+      setServiceFinishedAt(toDateTimeLocal());
     } catch (error) {
       console.error('Erro ao buscar ticket:', error);
       toast({ title: 'Erro ao carregar', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchServiceExecutors = async (area: string) => {
+    const { data, error } = await supabase
+      .from('service_executors')
+      .select('id, name, specialty, area, active')
+      .eq('area', area)
+      .eq('active', true)
+      .order('name', { ascending: true });
+
+    if (!error && data) {
+      setServiceExecutors(data as ServiceExecutor[]);
+    }
+  };
+
+  const fetchServiceSessions = async () => {
+    if (!id) return;
+
+    const { data: sessions, error } = await supabase
+      .from('ticket_service_sessions')
+      .select('id, started_at, finished_at, notes')
+      .eq('ticket_id', id)
+      .order('started_at', { ascending: false });
+
+    if (error || !sessions?.length) {
+      setServiceSessions([]);
+      return;
+    }
+
+    const sessionIds = sessions.map((session) => session.id);
+    const { data: links } = await supabase
+      .from('ticket_service_session_executors')
+      .select('session_id, executor_id')
+      .in('session_id', sessionIds);
+
+    const executorIds = [...new Set((links || []).map((link) => link.executor_id))];
+    const { data: executors } = executorIds.length
+      ? await supabase
+          .from('service_executors')
+          .select('id, name, specialty, area, active')
+          .in('id', executorIds)
+      : { data: [] };
+
+    const executorsById = new Map((executors || []).map((executor) => [executor.id, executor as ServiceExecutor]));
+    const executorIdsBySession = new Map<string, string[]>();
+    (links || []).forEach((link) => {
+      const current = executorIdsBySession.get(link.session_id) || [];
+      executorIdsBySession.set(link.session_id, [...current, link.executor_id]);
+    });
+
+    setServiceSessions(
+      sessions.map((session) => ({
+        ...session,
+        executors: (executorIdsBySession.get(session.id) || [])
+          .map((executorId) => executorsById.get(executorId))
+          .filter(Boolean) as ServiceExecutor[],
+      }))
+    );
   };
 
   const fetchInteractions = async () => {
@@ -204,12 +338,77 @@ export default function TicketWorkspace() {
       await updateTicketStatus(id, newStatus);
       
       setTicket(prev => prev ? { ...prev, status: newStatus } : null);
-      fetchInteractions();
+      await Promise.all([fetchTicket(), fetchInteractions(), fetchServiceSessions()]);
       toast({ title: 'Status atualizado!' });
     } catch (error: any) {
       toast({ title: 'Erro', description: error.message, variant: 'destructive' });
     } finally {
       setUpdatingStatus(false);
+    }
+  };
+
+  const toggleExecutor = (executorId: string) => {
+    setSelectedExecutorIds((current) =>
+      current.includes(executorId)
+        ? current.filter((id) => id !== executorId)
+        : [...current, executorId]
+    );
+  };
+
+  const startService = async () => {
+    if (!id) return;
+    if (!selectedExecutorIds.length) {
+      toast({
+        title: 'Executor obrigatório',
+        description: 'Selecione ao menos um executor para iniciar o serviço.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setUpdatingService(true);
+    try {
+      await startTicketService(id, {
+        executorIds: selectedExecutorIds,
+        startedAt: dateTimeLocalToIso(serviceStartedAt),
+        notes: serviceNotes,
+      });
+
+      setServiceNotes('');
+      await Promise.all([fetchTicket(), fetchInteractions(), fetchServiceSessions()]);
+      toast({ title: 'Serviço iniciado' });
+    } catch (error) {
+      toast({
+        title: 'Erro',
+        description: error instanceof Error ? error.message : 'Não foi possível iniciar o serviço.',
+        variant: 'destructive',
+      });
+    } finally {
+      setUpdatingService(false);
+    }
+  };
+
+  const finishService = async () => {
+    if (!id) return;
+
+    setUpdatingService(true);
+    try {
+      await finishTicketService(id, {
+        finishedAt: dateTimeLocalToIso(serviceFinishedAt),
+        notes: serviceNotes,
+      });
+
+      setServiceNotes('');
+      await Promise.all([fetchTicket(), fetchInteractions(), fetchServiceSessions()]);
+      toast({ title: 'Serviço encerrado', description: 'O ticket foi marcado como resolvido.' });
+    } catch (error) {
+      toast({
+        title: 'Erro',
+        description: error instanceof Error ? error.message : 'Não foi possível encerrar o serviço.',
+        variant: 'destructive',
+      });
+    } finally {
+      setUpdatingService(false);
     }
   };
 
@@ -248,6 +447,17 @@ export default function TicketWorkspace() {
   if (!ticket) return <div className="p-8 text-center">Ticket não encontrado</div>;
 
   const hasAttachments = signedUrls.imagens.some(Boolean) || signedUrls.arquivos.some(Boolean) || signedUrls.audio;
+  const openServiceSession = serviceSessions.find((session) => !session.finished_at);
+  const canStartService = !openServiceSession && ticket.status !== 'resolvido' && ticket.status !== 'fechado';
+  const canFinishService = !!openServiceSession && ticket.status !== 'fechado';
+  const serviceWaitingTime = ticket.service_started_at
+    ? formatDuration(getDurationMs(ticket.created_at, ticket.service_started_at))
+    : formatDuration(getDurationMs(ticket.created_at, new Date().toISOString()));
+  const serviceExecutionTime = ticket.service_started_at && ticket.service_finished_at
+    ? formatDuration(getDurationMs(ticket.service_started_at, ticket.service_finished_at))
+    : openServiceSession
+      ? formatDuration(getDurationMs(openServiceSession.started_at, new Date().toISOString()))
+      : 'Sem dados';
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -428,6 +638,135 @@ export default function TicketWorkspace() {
                     </SelectContent>
                   </Select>
                 </div>
+              </CardContent>
+           </Card>
+
+           <Card>
+              <CardHeader className="py-3">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <UserRoundCog className="h-4 w-4" />
+                  Execução do Serviço
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-2 rounded-md border bg-muted/30 p-3 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground">Aguardou atendimento</span>
+                    <strong>{serviceWaitingTime}</strong>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground">Tempo de execução</span>
+                    <strong>{serviceExecutionTime}</strong>
+                  </div>
+                  {ticket.service_started_at && (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted-foreground">Início</span>
+                      <strong>{format(new Date(ticket.service_started_at), 'dd/MM HH:mm', { locale: ptBR })}</strong>
+                    </div>
+                  )}
+                  {ticket.service_finished_at && (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted-foreground">Fim</span>
+                      <strong>{format(new Date(ticket.service_finished_at), 'dd/MM HH:mm', { locale: ptBR })}</strong>
+                    </div>
+                  )}
+                </div>
+
+                {canStartService && (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label className="text-xs">Executor(es)</Label>
+                      <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-2">
+                        {serviceExecutors.length ? serviceExecutors.map((executor) => (
+                          <label key={executor.id} className="flex cursor-pointer items-start gap-2 rounded p-1 hover:bg-muted">
+                            <Checkbox
+                              checked={selectedExecutorIds.includes(executor.id)}
+                              onCheckedChange={() => toggleExecutor(executor.id)}
+                            />
+                            <span className="text-xs leading-tight">
+                              <strong className="block">{executor.name}</strong>
+                              <span className="text-muted-foreground">{executor.specialty}</span>
+                            </span>
+                          </label>
+                        )) : (
+                          <p className="text-xs text-muted-foreground">
+                            Nenhum executor ativo cadastrado para esta área.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Data/hora inicial</Label>
+                      <Input type="datetime-local" value={serviceStartedAt} onChange={(event) => setServiceStartedAt(event.target.value)} />
+                    </div>
+                  </div>
+                )}
+
+                {canFinishService && (
+                  <div className="space-y-3">
+                    <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950/20 dark:text-blue-200">
+                      <p className="font-semibold">Serviço em andamento</p>
+                      <p>Iniciado em {format(new Date(openServiceSession.started_at), 'dd/MM/yyyy HH:mm', { locale: ptBR })}</p>
+                      <p>
+                        Executor(es): {openServiceSession.executors.map((executor) => executor.name).join(', ') || 'Não informado'}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Data/hora final</Label>
+                      <Input type="datetime-local" value={serviceFinishedAt} onChange={(event) => setServiceFinishedAt(event.target.value)} />
+                    </div>
+                  </div>
+                )}
+
+                {(canStartService || canFinishService) && (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Observação</Label>
+                    <Textarea
+                      value={serviceNotes}
+                      onChange={(event) => setServiceNotes(event.target.value)}
+                      placeholder="Opcional"
+                      className="min-h-20 text-xs"
+                    />
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-2">
+                  {canStartService && (
+                    <Button onClick={startService} disabled={updatingService || !serviceExecutors.length} className="w-full">
+                      {updatingService ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarClock className="mr-2 h-4 w-4" />}
+                      Iniciar serviço
+                    </Button>
+                  )}
+                  {canFinishService && (
+                    <Button onClick={finishService} disabled={updatingService} className="w-full">
+                      {updatingService ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                      Encerrar serviço
+                    </Button>
+                  )}
+                </div>
+
+                {serviceSessions.length > 0 && (
+                  <div className="space-y-2 border-t pt-3">
+                    <p className="flex items-center gap-2 text-xs font-semibold">
+                      <TimerReset className="h-3.5 w-3.5" />
+                      Ciclos registrados
+                    </p>
+                    <div className="space-y-2">
+                      {serviceSessions.slice(0, 4).map((session) => (
+                        <div key={session.id} className="rounded-md border p-2 text-xs">
+                          <p className="font-medium">
+                            {format(new Date(session.started_at), 'dd/MM HH:mm', { locale: ptBR })}
+                            {' '}até{' '}
+                            {session.finished_at ? format(new Date(session.finished_at), 'dd/MM HH:mm', { locale: ptBR }) : 'em andamento'}
+                          </p>
+                          <p className="text-muted-foreground">
+                            {session.executors.map((executor) => `${executor.name} (${executor.specialty})`).join(', ') || 'Executor não informado'}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </CardContent>
            </Card>
 

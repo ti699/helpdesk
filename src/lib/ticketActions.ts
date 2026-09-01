@@ -3,7 +3,13 @@ import { supabase } from '@/integrations/supabase/client';
 export type TicketStatus = 'aberto' | 'em_andamento' | 'aguardando_resposta' | 'resolvido' | 'fechado';
 export type TicketPriority = 'baixa' | 'media' | 'alta' | 'critica';
 
-type TicketActionName = 'create_ticket' | 'add_message' | 'update_status' | 'reopen_ticket_from_feedback';
+type TicketActionName =
+  | 'create_ticket'
+  | 'add_message'
+  | 'update_status'
+  | 'start_service'
+  | 'finish_service'
+  | 'reopen_ticket_from_feedback';
 
 interface TicketActionResult<T> {
   success: boolean;
@@ -61,6 +67,31 @@ export const updateTicketStatus = (ticketId: string, status: TicketStatus) =>
   invokeTicketAction<{ ok: boolean; unchanged?: boolean; status?: TicketStatus }>('update_status', {
     ticketId,
     status,
+  });
+
+export const startTicketService = (
+  ticketId: string,
+  payload: {
+    executorIds: string[];
+    startedAt?: string;
+    notes?: string;
+  },
+) =>
+  invokeTicketAction<{ ok: boolean; session: { id: string; started_at: string } }>('start_service', {
+    ticketId,
+    ...payload,
+  });
+
+export const finishTicketService = (
+  ticketId: string,
+  payload: {
+    finishedAt?: string;
+    notes?: string;
+  },
+) =>
+  invokeTicketAction<{ ok: boolean; status: TicketStatus; finished_at: string }>('finish_service', {
+    ticketId,
+    ...payload,
   });
 
 export const reopenTicketFromFeedback = (ticketId: string, reason?: string) =>
