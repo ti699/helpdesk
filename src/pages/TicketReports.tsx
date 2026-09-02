@@ -57,6 +57,7 @@ interface ReportTicket {
   executor_names: string;
   executor_specialties: string;
   executor_ids: string[];
+  executor_details: ServiceExecutorRow[];
   feedback_nota: number | null;
 }
 
@@ -75,6 +76,7 @@ interface ServiceExecutorRow {
   id: string;
   name: string;
   specialty: string;
+  area: string | null;
 }
 
 interface ServiceSessionRow {
@@ -87,6 +89,21 @@ interface ServiceSessionRow {
 interface ServiceSessionExecutorRow {
   session_id: string;
   executor_id: string;
+}
+
+interface ExecutorProductivityRow {
+  id: string;
+  name: string;
+  specialty: string;
+  area: string;
+  totalTickets: number;
+  completedTickets: number;
+  inProgressTickets: number;
+  avgExecutionMs: number | null;
+  totalExecutionMs: number | null;
+  avgWaitingMs: number | null;
+  avgResolutionMs: number | null;
+  slaPercent: number;
 }
 
 const unresolvedStatuses: TicketStatus[] = ['aberto', 'em_andamento', 'aguardando_resposta'];
@@ -244,6 +261,7 @@ const averageWaiting = (tickets: ReportTicket[], type: TicketType) => {
 };
 
 const hoursToMs = (value: string) => {
+  if (!value) return null;
   const numeric = Number(value);
   return Number.isFinite(numeric) && numeric >= 0 ? numeric * 3600000 : null;
 };
@@ -267,6 +285,85 @@ const chunk = <T,>(items: T[], size: number) => {
     chunks.push(items.slice(index, index + size));
   }
   return chunks;
+};
+
+const getResolutionEndDate = (ticket: ReportTicket) => ticket.service_finished_at || ticket.resolved_at || ticket.closed_at;
+
+const average = (durations: number[]) => (
+  durations.length ? durations.reduce((sum, duration) => sum + duration, 0) / durations.length : null
+);
+
+const buildExecutorProductivity = (tickets: ReportTicket[]): ExecutorProductivityRow[] => {
+  const rows = new Map<string, {
+    id: string;
+    name: string;
+    specialty: string;
+    area: string;
+    totalTickets: number;
+    completedTickets: number;
+    inProgressTickets: number;
+    slaOk: number;
+    executionDurations: number[];
+    waitingDurations: number[];
+    resolutionDurations: number[];
+  }>();
+
+  tickets.forEach((ticket) => {
+    if (!ticket.executor_details.length) return;
+
+    ticket.executor_details.forEach((executor) => {
+      const current = rows.get(executor.id) || {
+        id: executor.id,
+        name: executor.name,
+        specialty: executor.specialty || 'Não informado',
+        area: executor.area || 'Não informado',
+        totalTickets: 0,
+        completedTickets: 0,
+        inProgressTickets: 0,
+        slaOk: 0,
+        executionDurations: [],
+        waitingDurations: [],
+        resolutionDurations: [],
+      };
+
+      current.totalTickets += 1;
+      if (ticket.status === 'resolvido' || ticket.status === 'fechado') current.completedTickets += 1;
+      if (ticket.status && unresolvedStatuses.includes(ticket.status)) current.inProgressTickets += 1;
+      if (getRiskInfo(ticket).level !== 'warning' && getRiskInfo(ticket).level !== 'critical') current.slaOk += 1;
+
+      const executionMs = getDurationMs(ticket.service_started_at, ticket.service_finished_at);
+      const waitingMs = getDurationMs(ticket.created_at, ticket.service_started_at);
+      const resolutionMs = getDurationMs(ticket.created_at, getResolutionEndDate(ticket));
+      if (executionMs !== null && ticket.service_finished_at) current.executionDurations.push(executionMs);
+      if (waitingMs !== null) current.waitingDurations.push(waitingMs);
+      if (resolutionMs !== null) current.resolutionDurations.push(resolutionMs);
+
+      rows.set(executor.id, current);
+    });
+  });
+
+  return [...rows.values()]
+    .map((row) => {
+      const totalExecutionMs = row.executionDurations.length
+        ? row.executionDurations.reduce((sum, duration) => sum + duration, 0)
+        : null;
+
+      return {
+        id: row.id,
+        name: row.name,
+        specialty: row.specialty,
+        area: row.area,
+        totalTickets: row.totalTickets,
+        completedTickets: row.completedTickets,
+        inProgressTickets: row.inProgressTickets,
+        avgExecutionMs: average(row.executionDurations),
+        totalExecutionMs,
+        avgWaitingMs: average(row.waitingDurations),
+        avgResolutionMs: average(row.resolutionDurations),
+        slaPercent: row.totalTickets ? Math.round((row.slaOk / row.totalTickets) * 100) : 0,
+      };
+    })
+    .sort((a, b) => b.totalTickets - a.totalTickets || a.name.localeCompare(b.name));
 };
 
 function MetricCard({
@@ -395,8 +492,29 @@ export default function TicketReports() {
     if (servicoFimDe && servicoFimAte && new Date(`${servicoFimDe}T00:00:00`) > new Date(`${servicoFimAte}T00:00:00`)) {
       return { valid: false, message: 'A data final inicial do serviço não pode ser maior que a data final.' };
     }
+    const numericFilters = [
+      ['tempo mínimo de execução', tempoExecucaoMin],
+      ['tempo máximo de execução', tempoExecucaoMax],
+      ['tempo mínimo de resolução', tempoResolucaoMin],
+      ['tempo máximo de resolução', tempoResolucaoMax],
+    ];
+    const invalidNumeric = numericFilters.find(([, value]) => value && hoursToMs(value) === null);
+    if (invalidNumeric) return { valid: false, message: `Informe um ${invalidNumeric[0]} válido.` };
     return { valid: true, message: '' };
-  }, [periodoInicio, periodoFim, fechadoInicio, fechadoFim, servicoInicioDe, servicoInicioAte, servicoFimDe, servicoFimAte]);
+  }, [
+    periodoInicio,
+    periodoFim,
+    fechadoInicio,
+    fechadoFim,
+    servicoInicioDe,
+    servicoInicioAte,
+    servicoFimDe,
+    servicoFimAte,
+    tempoExecucaoMin,
+    tempoExecucaoMax,
+    tempoResolucaoMin,
+    tempoResolucaoMax,
+  ]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -517,6 +635,7 @@ export default function TicketReports() {
       let feedbacks: FeedbackRow[] = [];
       let serviceSessions: ServiceSessionRow[] = [];
       let sessionExecutorLinks: ServiceSessionExecutorRow[] = [];
+      let linkedServiceExecutors: ServiceExecutorRow[] = [];
       let serviceExecutors: ServiceExecutorRow[] = [];
 
       for (const ids of chunk(profileIds, 500)) {
@@ -564,14 +683,29 @@ export default function TicketReports() {
       for (const ids of chunk(executorIds, 500)) {
         const { data, error } = await supabase
           .from('service_executors')
-          .select('id, name, specialty')
+          .select('id, name, specialty, area')
           .in('id', ids);
 
         if (error) throw error;
-        serviceExecutors = [...serviceExecutors, ...((data || []) as ServiceExecutorRow[])];
+        linkedServiceExecutors = [...linkedServiceExecutors, ...((data || []) as ServiceExecutorRow[])];
       }
 
-      setExecutorOptions(serviceExecutors.sort((a, b) => a.name.localeCompare(b.name)));
+      let executorOptionsQuery = supabase
+        .from('service_executors')
+        .select('id, name, specialty, area')
+        .eq('active', true)
+        .order('name', { ascending: true });
+
+      if (forcedTeamType) {
+        executorOptionsQuery = executorOptionsQuery.eq('area', forcedTeamType);
+      } else if (tipoFilter !== 'all') {
+        executorOptionsQuery = executorOptionsQuery.eq('area', tipoFilter);
+      }
+
+      const { data: allExecutorOptions, error: executorOptionsError } = await executorOptionsQuery;
+      if (executorOptionsError) throw executorOptionsError;
+      serviceExecutors = (allExecutorOptions || []) as ServiceExecutorRow[];
+      setExecutorOptions(serviceExecutors);
 
       const profilesById = new Map(profiles.map((profile) => [
         profile.id,
@@ -581,7 +715,7 @@ export default function TicketReports() {
         },
       ]));
       const feedbackByTicketId = new Map(feedbacks.map((feedback) => [feedback.ticket_id, feedback.nota_satisfacao || null]));
-      const executorsById = new Map(serviceExecutors.map((executor) => [executor.id, executor]));
+      const executorsById = new Map([...linkedServiceExecutors, ...serviceExecutors].map((executor) => [executor.id, executor]));
       const sessionIdsByTicketId = new Map<string, string[]>();
       serviceSessions.forEach((session) => {
         const current = sessionIdsByTicketId.get(session.ticket_id) || [];
@@ -608,6 +742,7 @@ export default function TicketReports() {
           executor_names: ticketExecutors.map((executor) => executor.name).join(', ') || 'Não informado',
           executor_specialties: [...new Set(ticketExecutors.map((executor) => executor.specialty))].join(', ') || 'Não informado',
           executor_ids: ticketExecutorIds,
+          executor_details: ticketExecutors,
           feedback_nota: feedbackByTicketId.get(ticket.id) || null,
         };
       }) as ReportTicket[];
@@ -653,6 +788,8 @@ export default function TicketReports() {
     });
     const ratings = tickets.map((ticket) => ticket.feedback_nota || 0).filter(Boolean);
     const satisfaction = ratings.length ? ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length : 0;
+    const productivityRows = buildExecutorProductivity(tickets);
+    const completedServices = tickets.filter((ticket) => ticket.service_started_at && ticket.service_finished_at).length;
 
     return {
       total,
@@ -678,7 +815,13 @@ export default function TicketReports() {
       categoryRows: countBy(tickets, (ticket) => ticket.categoria),
       sectorRows: countBy(tickets, (ticket) => ticket.setor),
       requesterRows: countBy(tickets, (ticket) => ticket.solicitante_nome),
-      executorRows: countBy(tickets, (ticket) => ticket.executor_names, 10),
+      executorRows: productivityRows.slice(0, 10).map((row) => ({
+        label: row.name,
+        count: row.totalTickets,
+        percent: tickets.length ? Math.round((row.totalTickets / tickets.length) * 100) : 0,
+      })),
+      productivityRows,
+      completedServices,
       oldestUnresolved: riskItems
         .filter((item) => item.ticket.status && unresolvedStatuses.includes(item.ticket.status))
         .sort((a, b) => b.durationMs - a.durationMs)
@@ -690,6 +833,27 @@ export default function TicketReports() {
     () => [...new Set(executorOptions.map((executor) => executor.specialty).filter(Boolean))].sort(),
     [executorOptions],
   );
+
+  const clearFilters = () => {
+    const now = new Date();
+    setPeriodoInicio(format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd'));
+    setPeriodoFim(format(now, 'yyyy-MM-dd'));
+    setFechadoInicio('');
+    setFechadoFim('');
+    setServicoInicioDe('');
+    setServicoInicioAte('');
+    setServicoFimDe('');
+    setServicoFimAte('');
+    setTipoFilter('all');
+    setSetorFilter('all');
+    setExecutorFilter('all');
+    setExecutorFuncaoFilter('all');
+    setTempoExecucaoMin('');
+    setTempoExecucaoMax('');
+    setTempoResolucaoMin('');
+    setTempoResolucaoMax('');
+    setStatusFilters([]);
+  };
 
   const exportPDF = () => {
     if (!periodValidation.valid) return;
@@ -859,6 +1023,56 @@ export default function TicketReports() {
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(17, 24, 39);
     doc.setFontSize(14);
+    doc.text('Produtividade por Executor', marginX, 18);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(71, 85, 105);
+    doc.text(
+      `Relatório considerando ${stats.total} tickets, ${stats.productivityRows.length} executor(es) e ${stats.completedServices} serviço(s) concluído(s).`,
+      marginX,
+      25,
+    );
+
+    autoTable(doc, {
+      startY: 32,
+      margin: { left: 8, right: 8 },
+      head: [['Executor', 'Função', 'Área', 'Tickets', 'Concl.', 'Andam.', 'Exec. média', 'Exec. total', 'Espera', 'Resolução', 'SLA']],
+      body: stats.productivityRows.length
+        ? stats.productivityRows.map((row) => [
+            truncateReportText(row.name, 36),
+            truncateReportText(row.specialty, 28),
+            truncateReportText(row.area, 22),
+            row.totalTickets,
+            row.completedTickets,
+            row.inProgressTickets,
+            formatDuration(row.avgExecutionMs),
+            formatDuration(row.totalExecutionMs),
+            formatDuration(row.avgWaitingMs),
+            formatDuration(row.avgResolutionMs),
+            `${row.slaPercent}%`,
+          ])
+        : [['Nenhum serviço com executor registrado para os filtros selecionados', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-']],
+      styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak', valign: 'middle' },
+      headStyles: { fillColor: [15, 118, 110], fontSize: 7.2 },
+      columnStyles: {
+        0: { cellWidth: 37 },
+        1: { cellWidth: 27 },
+        2: { cellWidth: 22 },
+        3: { cellWidth: 14 },
+        4: { cellWidth: 14 },
+        5: { cellWidth: 14 },
+        6: { cellWidth: 24 },
+        7: { cellWidth: 24 },
+        8: { cellWidth: 24 },
+        9: { cellWidth: 24 },
+        10: { cellWidth: 14 },
+      },
+    });
+
+    doc.addPage();
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(17, 24, 39);
+    doc.setFontSize(14);
     doc.text('Relação detalhada de tickets', marginX, 18);
 
     autoTable(doc, {
@@ -984,7 +1198,7 @@ export default function TicketReports() {
               Parâmetros do relatório
             </CardTitle>
             <CardDescription className="text-xs">
-              A prévia abaixo usa os mesmos dados que serão exportados no PDF.
+              Relatório considerando {stats.total} ticket(s), {stats.productivityRows.length} executor(es) e {stats.completedServices} serviço(s) concluído(s).
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
@@ -1084,6 +1298,11 @@ export default function TicketReports() {
                 triggerClassName="h-9"
               />
             </div>
+            <div className="flex items-end">
+              <Button type="button" variant="outline" className="h-9 w-full" onClick={clearFilters}>
+                Limpar filtros
+              </Button>
+            </div>
             {!periodValidation.valid && (
               <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/20 dark:text-amber-200 sm:col-span-2 lg:col-span-6">
                 {periodValidation.message}
@@ -1127,6 +1346,61 @@ export default function TicketReports() {
           <RankingBlock title="Ranking por setor" rows={stats.sectorRows} />
           <RankingBlock title="Ranking por executor" rows={stats.executorRows} />
         </section>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Produtividade por Executor</CardTitle>
+            <CardDescription>
+              Conta cada participação individual. Se um ticket teve dois executores, cada um recebe uma participação.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Executor</TableHead>
+                  <TableHead>Função</TableHead>
+                  <TableHead>Área</TableHead>
+                  <TableHead>Tickets</TableHead>
+                  <TableHead>Concluídos</TableHead>
+                  <TableHead>Em andamento</TableHead>
+                  <TableHead>Execução média</TableHead>
+                  <TableHead>Execução total</TableHead>
+                  <TableHead>Espera média</TableHead>
+                  <TableHead>Resolução média</TableHead>
+                  <TableHead>SLA</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {stats.productivityRows.length ? stats.productivityRows.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell className="font-medium">{row.name}</TableCell>
+                    <TableCell>{row.specialty}</TableCell>
+                    <TableCell>{row.area}</TableCell>
+                    <TableCell>{row.totalTickets}</TableCell>
+                    <TableCell>{row.completedTickets}</TableCell>
+                    <TableCell>{row.inProgressTickets}</TableCell>
+                    <TableCell>{formatDuration(row.avgExecutionMs)}</TableCell>
+                    <TableCell>{formatDuration(row.totalExecutionMs)}</TableCell>
+                    <TableCell>{formatDuration(row.avgWaitingMs)}</TableCell>
+                    <TableCell>{formatDuration(row.avgResolutionMs)}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={row.slaPercent >= 90 ? riskColors.normal : row.slaPercent >= 70 ? riskColors.warning : riskColors.critical}>
+                        {row.slaPercent}%
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                )) : (
+                  <TableRow>
+                    <TableCell colSpan={11} className="py-8 text-center text-muted-foreground">
+                      Nenhum serviço com executor registrado para os filtros selecionados.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
