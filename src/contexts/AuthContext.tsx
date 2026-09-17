@@ -112,35 +112,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+    let cancelled = false;
+    let hydrationRequest = 0;
 
-        if (session?.user) {
-          setTimeout(() => {
-            fetchProfile(session.user.id);
-          }, 0);
-        } else {
-          setProfile(null);
-          setRole(null);
-          setManagementReportAccess(false);
-          setAssetAccess(null);
-        }
-        setLoading(false);
+    const hydrateSession = (nextSession: Session | null) => {
+      const request = ++hydrationRequest;
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
+
+      if (!nextSession?.user) {
+        setProfile(null);
+        setRole(null);
+        setManagementReportAccess(false);
+        setAssetAccess(null);
+        if (!cancelled && request === hydrationRequest) setLoading(false);
+        return;
       }
+
+      setLoading(true);
+      setTimeout(async () => {
+        await fetchProfile(nextSession.user.id);
+        if (!cancelled && request === hydrationRequest) setLoading(false);
+      }, 0);
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, nextSession) => hydrateSession(nextSession)
     );
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id);
-      }
-      setLoading(false);
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      hydrateSession(currentSession);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      hydrationRequest += 1;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {
