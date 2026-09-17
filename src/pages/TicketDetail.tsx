@@ -27,7 +27,8 @@ import {
   AlertCircle,
   Loader2,
   Star,
-  FileDown
+  FileDown,
+  PackageSearch
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -62,6 +63,7 @@ interface TicketData {
   closed_at: string | null;
   service_started_at: string | null;
   service_finished_at: string | null;
+  asset_id: string | null;
   solicitante: {
     id: string;
     nome: string;
@@ -140,7 +142,7 @@ const formatDuration = (durationMs: number | null) => {
 export default function TicketDetail() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
-  const { user } = useAuth();
+  const { user, assetAccess } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   
@@ -160,6 +162,7 @@ export default function TicketDetail() {
   const [feedbackChecked, setFeedbackChecked] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
   const [signedUrls, setSignedUrls] = useState<SignedUrls>({ imagens: [], arquivos: [], audio: null });
+  const [linkedAsset, setLinkedAsset] = useState<{ id: string; asset_code: string; name: string; serial_number: string | null } | null>(null);
   
   const audioRef = useRef<HTMLAudioElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -279,6 +282,7 @@ export default function TicketDetail() {
           closed_at,
           service_started_at,
           service_finished_at,
+          asset_id,
           solicitante_id,
           agente_id
         `)
@@ -314,6 +318,17 @@ export default function TicketDetail() {
         solicitante,
         agente,
       } as unknown as TicketData);
+
+      if (ticketData.asset_id) {
+        const { data: assetData } = await (supabase as any)
+          .from('assets')
+          .select('id, asset_code, name, serial_number')
+          .eq('id', ticketData.asset_id)
+          .maybeSingle();
+        setLinkedAsset(assetData || null);
+      } else {
+        setLinkedAsset(null);
+      }
     } catch (error) {
       console.error('Error fetching ticket:', error);
       toast({
@@ -517,13 +532,17 @@ export default function TicketDetail() {
         14,
         86,
       );
+      if (linkedAsset) {
+        doc.text(`Patrimônio: ${linkedAsset.asset_code} - ${linkedAsset.name}`, 14, 94);
+      }
 
       const descriptionLines = doc.splitTextToSize(ticket.descricao || '', 180);
-      doc.text('Descrição:', 14, 100);
-      doc.text(descriptionLines, 14, 108);
+      const descriptionY = linkedAsset ? 106 : 100;
+      doc.text('Descrição:', 14, descriptionY);
+      doc.text(descriptionLines, 14, descriptionY + 8);
 
       autoTable(doc, {
-        startY: Math.min(138, 114 + descriptionLines.length * 6),
+        startY: Math.min(150, descriptionY + 14 + descriptionLines.length * 6),
         head: [['Data', 'Autor', 'Tipo', 'Mensagem']],
         body: interactions.map((interaction) => [
           format(new Date(interaction.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR }),
@@ -716,6 +735,20 @@ export default function TicketDetail() {
               {ticket.categoria && <span className="hidden xs:inline">• {ticket.categoria}</span>}
               {ticket.setor && <span className="hidden sm:inline">• {ticket.setor}</span>}
             </div>
+
+            {linkedAsset && (
+              <div className="flex flex-col gap-2 rounded-md border border-primary/20 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-2">
+                  <PackageSearch className="h-5 w-5 shrink-0 text-primary" />
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs text-primary">{linkedAsset.asset_code}</p>
+                    <p className="truncate text-sm font-medium">{linkedAsset.name}</p>
+                    {linkedAsset.serial_number && <p className="text-xs text-muted-foreground">Série: {linkedAsset.serial_number}</p>}
+                  </div>
+                </div>
+                {assetAccess && <Link to={`/patrimonio/${linkedAsset.id}`}><Button variant="outline" size="sm">Ver patrimônio</Button></Link>}
+              </div>
+            )}
 
             <div className="grid gap-2 rounded-lg border bg-muted/30 p-3 text-xs sm:grid-cols-3">
               <div>

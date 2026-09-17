@@ -3,6 +3,7 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
 type AppRole = 'solicitante' | 'agente_ti' | 'agente_manutencao' | 'admin';
+export type AssetAccessLevel = 'consulta' | 'operador' | 'gestor';
 
 interface Profile {
   active: boolean;
@@ -24,6 +25,7 @@ interface AuthContextType {
   profile: Profile | null;
   role: AppRole | null;
   managementReportAccess: boolean;
+  assetAccess: AssetAccessLevel | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, profileData: Partial<Profile>, inviteToken?: string) => Promise<{ error: Error | null }>;
@@ -41,6 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
   const [managementReportAccess, setManagementReportAccess] = useState(false);
+  const [assetAccess, setAssetAccess] = useState<AssetAccessLevel | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string) => {
@@ -59,6 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setProfile(null);
           setRole(null);
           setManagementReportAccess(false);
+          setAssetAccess(null);
           return;
         }
 
@@ -80,20 +84,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (assignedRole === 'admin') {
         setManagementReportAccess(true);
+        setAssetAccess('gestor');
       } else {
-        const { data: managementAccessData } = await supabase
-          .from('management_report_access')
-          .select('user_id')
-          .eq('user_id', userId)
-          .maybeSingle();
+        const [{ data: managementAccessData }, { data: assetAccessData }] = await Promise.all([
+          supabase
+            .from('management_report_access')
+            .select('user_id')
+            .eq('user_id', userId)
+            .maybeSingle(),
+          supabase
+            .from('asset_module_access')
+            .select('access_level')
+            .eq('user_id', userId)
+            .maybeSingle(),
+        ]);
 
         setManagementReportAccess(!!managementAccessData);
+        setAssetAccess((assetAccessData?.access_level as AssetAccessLevel | undefined) || null);
       }
 
       setRole(assignedRole);
     } catch (error) {
       console.error('Error fetching profile:', error);
       setManagementReportAccess(false);
+      setAssetAccess(null);
     }
   };
 
@@ -111,6 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setProfile(null);
           setRole(null);
           setManagementReportAccess(false);
+          setAssetAccess(null);
         }
         setLoading(false);
       }
@@ -195,6 +210,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(null);
     setRole(null);
     setManagementReportAccess(false);
+    setAssetAccess(null);
   };
 
   const refreshProfile = async () => {
@@ -219,6 +235,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         profile,
         role,
         managementReportAccess,
+        assetAccess,
         loading,
         signIn,
         signUp,

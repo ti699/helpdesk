@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { User, Search, Filter, Loader2, BarChart3, Pencil, UserCheck, UserX } from 'lucide-react';
+import { User, Search, Filter, Loader2, BarChart3, Pencil, UserCheck, UserX, PackageSearch } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { RoleSelector } from './RoleSelector';
@@ -31,6 +31,7 @@ interface UserWithRole {
   created_at: string;
   role: 'solicitante' | 'agente_ti' | 'agente_manutencao' | 'admin';
   managementAccess: boolean;
+  assetAccess: 'consulta' | 'operador' | 'gestor' | null;
 }
 
 interface AdminActionResult<T> {
@@ -102,7 +103,14 @@ export function UserManagement() {
 
       if (managementAccessError) throw managementAccessError;
 
+      const { data: assetAccess, error: assetAccessError } = await supabase
+        .from('asset_module_access')
+        .select('user_id, access_level');
+
+      if (assetAccessError) throw assetAccessError;
+
       const managementAccessSet = new Set((managementAccess || []).map((access) => access.user_id));
+      const assetAccessMap = new Map((assetAccess || []).map((access) => [access.user_id, access.access_level]));
 
       // Merge profiles with roles
       const usersWithRoles: UserWithRole[] = (profiles || []).map((profile) => {
@@ -113,6 +121,9 @@ export function UserManagement() {
           deactivated_at: profile.deactivated_at || null,
           role: (userRole?.role as 'solicitante' | 'agente_ti' | 'agente_manutencao' | 'admin') || 'solicitante',
           managementAccess: managementAccessSet.has(profile.id),
+          assetAccess: profile.id && assetAccessMap.has(profile.id)
+            ? assetAccessMap.get(profile.id) as 'consulta' | 'operador' | 'gestor'
+            : null,
         };
       });
 
@@ -287,6 +298,38 @@ export function UserManagement() {
         description: 'Não foi possível atualizar o acesso à Alta Gestão',
         variant: 'destructive',
       });
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
+  const handleAssetAccessChange = async (userId: string, accessLevel: string) => {
+    setUpdatingUserId(userId);
+    try {
+      if (accessLevel === 'none') {
+        const { error } = await supabase.from('asset_module_access').delete().eq('user_id', userId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('asset_module_access').upsert({
+          user_id: userId,
+          access_level: accessLevel as 'consulta' | 'operador' | 'gestor',
+          granted_by: currentUser?.id || null,
+        });
+        if (error) throw error;
+      }
+
+      setUsers((prev) => prev.map((item) => item.id === userId
+        ? { ...item, assetAccess: accessLevel === 'none' ? null : accessLevel as UserWithRole['assetAccess'] }
+        : item));
+      toast({
+        title: 'Acesso patrimonial atualizado',
+        description: accessLevel === 'none'
+          ? 'O acesso ao módulo foi removido.'
+          : `Nível definido como ${accessLevel}.`,
+      });
+    } catch (error) {
+      console.error('Error updating asset access:', error);
+      toast({ title: 'Erro', description: 'Não foi possível atualizar o acesso ao patrimônio.', variant: 'destructive' });
     } finally {
       setUpdatingUserId(null);
     }
@@ -510,6 +553,28 @@ export function UserManagement() {
                       aria-label={`Acesso à Alta Gestão para ${user.nome}`}
                     />
                   </div>
+                  <div className="flex min-w-[220px] items-center gap-2 rounded-md border px-3 py-2">
+                    <PackageSearch className="h-4 w-4 text-muted-foreground" />
+                    <div className="min-w-0 flex-1 leading-tight">
+                      <p className="text-xs font-medium">Patrimônio</p>
+                      <p className="text-[11px] text-muted-foreground">Nível de acesso</p>
+                    </div>
+                    <Select
+                      value={user.role === 'admin' ? 'gestor' : user.assetAccess || 'none'}
+                      disabled={updatingUserId === user.id || user.role === 'admin' || !user.active}
+                      onValueChange={(value) => handleAssetAccessChange(user.id, value)}
+                    >
+                      <SelectTrigger className="h-8 w-[118px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sem acesso</SelectItem>
+                        <SelectItem value="consulta">Consulta</SelectItem>
+                        <SelectItem value="operador">Operador</SelectItem>
+                        <SelectItem value="gestor">Gestor</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                   {updatingUserId === user.id ? (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -541,6 +606,8 @@ export function UserManagement() {
           <span>{users.filter((u) => u.role === 'admin').length} admins</span>
           <span>•</span>
           <span>{users.filter((u) => u.managementAccess || u.role === 'admin').length} com Alta Gestão</span>
+          <span>•</span>
+          <span>{users.filter((u) => u.assetAccess || u.role === 'admin').length} com Patrimônio</span>
           <span>•</span>
           <span>{users.filter((u) => !u.active).length} desativados</span>
         </div>

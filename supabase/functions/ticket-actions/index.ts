@@ -43,6 +43,7 @@ interface TicketRecord {
   closed_at: string | null;
   service_started_at: string | null;
   service_finished_at: string | null;
+  asset_id: string | null;
 }
 
 interface Recipient {
@@ -84,7 +85,7 @@ const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 const admin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
 const ticketSelect =
-  "id, protocolo, titulo, descricao, status, prioridade, tipo, setor, solicitante_id, agente_id, resolved_at, closed_at, service_started_at, service_finished_at";
+  "id, protocolo, titulo, descricao, status, prioridade, tipo, setor, solicitante_id, agente_id, resolved_at, closed_at, service_started_at, service_finished_at, asset_id";
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -471,6 +472,26 @@ const handleCreateTicket = async (
     );
   }
 
+  const assetId = typeof payload.assetId === "string" && payload.assetId ? payload.assetId : null;
+  if (assetId) {
+    const { data: asset, error: assetError } = await admin
+      .from("assets")
+      .select("id, active, responsible_user_id, department")
+      .eq("id", assetId)
+      .maybeSingle();
+
+    if (assetError || !asset || !asset.active) {
+      throw new HttpError(404, "Patrimônio não encontrado ou inativo");
+    }
+
+    const privileged = ["agente_ti", "agente_manutencao", "admin"].includes(context.role);
+    const relatedToRequester = asset.responsible_user_id === requester.id ||
+      (!!asset.department && !!requester.setor && asset.department === requester.setor);
+    if (!privileged && !relatedToRequester) {
+      throw new HttpError(403, "O patrimônio selecionado não está vinculado a você ou ao seu setor");
+    }
+  }
+
   const { data, error } = await admin
     .from("tickets")
     .insert({
@@ -483,6 +504,7 @@ const handleCreateTicket = async (
       setor: requester.setor || null,
       prioridade: (payload.prioridade || "media") as TicketPriority,
       anexos: payload.anexos || { imagens: [], arquivos: [], audio: null },
+      asset_id: assetId,
     })
     .select(ticketSelect)
     .single();
@@ -506,6 +528,54 @@ const handleCreateTicket = async (
       protocolo: ticket.protocolo,
     },
   };
+};
+
+const handleUpdateAssetService = async (
+  payload: Record<string, unknown>,
+  context: Awaited<ReturnType<typeof getUserAndRole>>,
+) => {
+  const ticketId = String(payload.ticketId || "");
+  if (!ticketId) throw new HttpError(400, "Ticket obrigatório");
+
+  const ticket = await getTicket(ticketId);
+  if (!ticket.asset_id) throw new HttpError(400, "Este ticket não possui patrimônio vinculado");
+  if (!canUpdateTicketStatus(context.role, ticket)) {
+    throw new HttpError(403, "Você não tem permissão para registrar a manutenção deste patrimônio");
+  }
+
+  const toNullableMoney = (value: unknown) => {
+    if (value === null || value === undefined || value === "") return null;
+    const number = Number(value);
+    if (!Number.isFinite(number) || number < 0) throw new HttpError(400, "Valor de manutenção inválido");
+    return number;
+  };
+
+  const returned = payload.returned === true;
+  const { error } = await admin.from("tickets").update({
+    asset_diagnosis: typeof payload.diagnosis === "string" ? payload.diagnosis.trim() || null : null,
+    asset_estimated_cost: toNullableMoney(payload.estimatedCost),
+    asset_final_cost: toNullableMoney(payload.finalCost),
+    asset_returned_at: returned ? new Date().toISOString() : null,
+  }).eq("id", ticketId);
+  if (error) throw new HttpError(400, error.message);
+
+  if (returned) {
+    const { data: availableStatus } = await admin.from("asset_statuses")
+      .select("id")
+      .in("name", ["Em uso", "Disponível"])
+      .eq("active", true)
+      .order("sort_order")
+      .limit(1)
+      .maybeSingle();
+    if (availableStatus?.id) {
+      await admin.from("assets").update({
+        status_id: availableStatus.id,
+        updated_by: context.user.id,
+      }).eq("id", ticket.asset_id);
+    }
+  }
+
+  return { ok: true };
 };
 
 const handleAddMessage = async (
@@ -1022,6 +1092,8 @@ const handler = async (req: Request): Promise<Response> => {
           return handleStartService(body.payload || {}, context);
         case "finish_service":
           return handleFinishService(body.payload || {}, context);
+        case "update_asset_service":
+          return handleUpdateAssetService(body.payload || {}, context);
         case "reopen_ticket_from_feedback":
           return handleReopenTicketFromFeedback(body.payload || {}, context);
         default:

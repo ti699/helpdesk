@@ -9,6 +9,7 @@ type TicketActionName =
   | 'update_status'
   | 'start_service'
   | 'finish_service'
+  | 'update_asset_service'
   | 'reopen_ticket_from_feedback';
 
 interface TicketActionResult<T> {
@@ -24,6 +25,7 @@ export interface CreateTicketPayload {
   categoria: string;
   prioridade: TicketPriority;
   solicitanteEmail?: string;
+  assetId?: string;
   anexos: {
     imagens: string[];
     arquivos: string[];
@@ -99,3 +101,8 @@ export const reopenTicketFromFeedback = (ticketId: string, reason?: string) =>
     ticketId,
     reason,
   });
+
+export const updateTicketAssetService = (
+  ticketId: string,
+  payload: { diagnosis?: string; estimatedCost?: number | null; finalCost?: number | null; returned?: boolean },
+) => invokeTicketAction<{ ok: boolean }>('update_asset_service', { ticketId, ...payload });

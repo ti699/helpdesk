@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -28,7 +28,8 @@ import {
   Send,
   AlertTriangle,
   UserPlus,
-  Star
+  Star,
+  PackageSearch
 } from 'lucide-react';
 import { z } from 'zod';
 import { TicketTypeSelect } from '@/components/tickets/TicketTypeSelect';
@@ -55,9 +56,17 @@ interface PendingFeedbackTicket {
   created_at: string | null;
 }
 
+interface TicketAssetOption {
+  id: string;
+  asset_code: string;
+  name: string;
+  department: string | null;
+}
+
 export default function NovoTicket() {
   const { user, role } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   
   const [titulo, setTitulo] = useState('');
@@ -71,6 +80,8 @@ export default function NovoTicket() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checkingPendingFeedback, setCheckingPendingFeedback] = useState(true);
   const [pendingFeedbackTickets, setPendingFeedbackTickets] = useState<PendingFeedbackTicket[]>([]);
+  const [assetId, setAssetId] = useState(searchParams.get('asset') || 'none');
+  const [assetOptions, setAssetOptions] = useState<TicketAssetOption[]>([]);
   
   // Create for another user
   const [createForOther, setCreateForOther] = useState(false);
@@ -95,6 +106,19 @@ export default function NovoTicket() {
     }
 
     fetchPendingFeedbackTickets();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const loadAssets = async () => {
+      const { data, error } = await (supabase as any)
+        .from('assets')
+        .select('id, asset_code, name, department')
+        .eq('active', true)
+        .order('asset_code');
+      if (!error) setAssetOptions((data || []) as TicketAssetOption[]);
+    };
+    loadAssets();
   }, [user]);
 
   const fetchPendingFeedbackTickets = async () => {
@@ -308,6 +332,7 @@ export default function NovoTicket() {
         categoria,
         prioridade,
         solicitanteEmail: targetRequesterEmail,
+        assetId: assetId === 'none' ? undefined : assetId,
         anexos: {
           imagens: uploadedImages,
           arquivos: uploadedFiles,
@@ -482,6 +507,28 @@ export default function NovoTicket() {
                 <Label htmlFor="categoria" className="text-sm">Categoria *</Label>
                 <CategorySelect tipo={tipo} value={categoria} onValueChange={setCategoria} />
               </div>
+
+              {/* Título */}
+              {assetOptions.length > 0 && (
+                <div className="space-y-2">
+                  <Label htmlFor="asset" className="text-sm">Patrimônio relacionado (opcional)</Label>
+                  <Select value={assetId} onValueChange={setAssetId}>
+                    <SelectTrigger id="asset" className="w-full text-sm">
+                      <PackageSearch className="mr-2 h-4 w-4 text-muted-foreground" />
+                      <SelectValue placeholder="Selecione um patrimônio" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Nenhum patrimônio</SelectItem>
+                      {assetOptions.map((asset) => (
+                        <SelectItem key={asset.id} value={asset.id}>
+                          {asset.asset_code} - {asset.name}{asset.department ? ` (${asset.department})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">Vincule o bem para manter chamados e manutenções no histórico patrimonial.</p>
+                </div>
+              )}
 
               {/* Título */}
               <div className="space-y-2">

@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      asset_module_access: {
+        Row: {
+          access_level: Database["public"]["Enums"]["asset_access_level"]
+          created_at: string
+          granted_by: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_level?: Database["public"]["Enums"]["asset_access_level"]
+          created_at?: string
+          granted_by?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_level?: Database["public"]["Enums"]["asset_access_level"]
+          created_at?: string
+          granted_by?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       feedbacks: {
         Row: {
           avaliador_id: string
@@ -347,6 +371,11 @@ export type Database = {
         Row: {
           agente_id: string | null
           anexos: Json | null
+          asset_diagnosis: string | null
+          asset_estimated_cost: number | null
+          asset_final_cost: number | null
+          asset_id: string | null
+          asset_returned_at: string | null
           categoria: string | null
           closed_at: string | null
           created_at: string | null
@@ -368,6 +397,11 @@ export type Database = {
         Insert: {
           agente_id?: string | null
           anexos?: Json | null
+          asset_diagnosis?: string | null
+          asset_estimated_cost?: number | null
+          asset_final_cost?: number | null
+          asset_id?: string | null
+          asset_returned_at?: string | null
           categoria?: string | null
           closed_at?: string | null
           created_at?: string | null
@@ -389,6 +423,11 @@ export type Database = {
         Update: {
           agente_id?: string | null
           anexos?: Json | null
+          asset_diagnosis?: string | null
+          asset_estimated_cost?: number | null
+          asset_final_cost?: number | null
+          asset_id?: string | null
+          asset_returned_at?: string | null
           categoria?: string | null
           closed_at?: string | null
           created_at?: string | null
@@ -465,6 +504,20 @@ export type Database = {
     }
     Enums: {
       app_role: "solicitante" | "agente_ti" | "admin" | "agente_manutencao"
+      asset_access_level: "consulta" | "operador" | "gestor"
+      asset_movement_status: "pendente" | "aprovada" | "concluida" | "cancelada"
+      asset_movement_type:
+        | "transferencia_responsavel"
+        | "transferencia_setor"
+        | "transferencia_local"
+        | "emprestimo"
+        | "devolucao"
+        | "envio_manutencao"
+        | "retorno_manutencao"
+        | "baixa"
+        | "descarte"
+        | "extravio"
+      asset_term_status: "pendente" | "aceito" | "cancelado"
       interaction_type: "texto" | "mudanca_status" | "anexo_extra"
       ticket_priority: "baixa" | "media" | "alta" | "critica"
       ticket_status:
@@ -601,6 +654,10 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["solicitante", "agente_ti", "admin", "agente_manutencao"],
+      asset_access_level: ["consulta", "operador", "gestor"],
+      asset_movement_status: ["pendente", "aprovada", "concluida", "cancelada"],
+      asset_movement_type: ["transferencia_responsavel", "transferencia_setor", "transferencia_local", "emprestimo", "devolucao", "envio_manutencao", "retorno_manutencao", "baixa", "descarte", "extravio"],
+      asset_term_status: ["pendente", "aceito", "cancelado"],
       interaction_type: ["texto", "mudanca_status", "anexo_extra"],
       ticket_priority: ["baixa", "media", "alta", "critica"],
       ticket_status: [

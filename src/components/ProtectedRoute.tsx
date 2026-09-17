@@ -5,10 +5,11 @@ import { Loader2 } from 'lucide-react';
 interface ProtectedRouteProps {
   children: React.ReactNode;
   allowedRoles?: ('solicitante' | 'agente_ti' | 'agente_manutencao' | 'admin')[];
+  requireAssetAccess?: boolean;
 }
 
-export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
-  const { user, role, loading } = useAuth();
+export function ProtectedRoute({ children, allowedRoles, requireAssetAccess }: ProtectedRouteProps) {
+  const { user, role, assetAccess, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -30,6 +31,10 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
     } else if (role === 'agente_ti' || role === 'agente_manutencao' || role === 'admin') {
       return <Navigate to="/dashboard" replace />;
     }
+  }
+
+  if (requireAssetAccess && !assetAccess) {
+    return <Navigate to={role === 'solicitante' ? '/' : '/dashboard'} replace />;
   }
 
   return <>{children}</>;

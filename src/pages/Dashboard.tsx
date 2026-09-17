@@ -24,7 +24,8 @@ import {
   Monitor,
   Wrench,
   Plus,
-  BarChart3
+  BarChart3,
+  PackageSearch
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -124,7 +125,7 @@ const getUnresolvedBadgeClass = (ticket: Pick<TicketData, 'tipo' | 'created_at'>
 };
 
 export default function Dashboard() {
-  const { user, role, managementReportAccess, loading: authLoading } = useAuth();
+  const { user, role, managementReportAccess, assetAccess, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [tickets, setTickets] = useState<TicketData[]>([]);
@@ -621,6 +622,16 @@ export default function Dashboard() {
                   </Button>
                 </Link>
               </>
+            )}
+            {assetAccess && (
+              <Link to="/patrimonio">
+                <Button variant="outline" size="sm" className="hidden h-8 sm:flex">
+                  <PackageSearch className="mr-2 h-4 w-4" />Patrimônio
+                </Button>
+                <Button variant="outline" size="icon" className="h-8 w-8 sm:hidden" title="Patrimônio">
+                  <PackageSearch className="h-4 w-4" />
+                </Button>
+              </Link>
             )}
             {role === 'admin' && (
               <>

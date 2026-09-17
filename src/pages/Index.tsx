@@ -21,7 +21,8 @@ import {
   User,
   Loader2,
   Monitor,
-  Wrench
+  Wrench,
+  PackageSearch
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -52,7 +53,7 @@ const statusConfig: Record<TicketStatus, { label: string; color: string; icon: R
 };
 
 export default function Index() {
-  const { user, profile, role, loading: authLoading, signOut } = useAuth();
+  const { user, profile, role, assetAccess, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [tickets, setTickets] = useState<TicketData[]>([]);
@@ -276,6 +277,16 @@ export default function Index() {
           </div>
           
           <div className="flex items-center gap-1 sm:gap-4">
+            {assetAccess && (
+              <Link to="/patrimonio">
+                <Button variant="outline" size="sm" className="hidden h-8 sm:flex">
+                  <PackageSearch className="mr-2 h-4 w-4" />Patrimônio
+                </Button>
+                <Button variant="outline" size="icon" className="h-8 w-8 sm:hidden" title="Patrimônio">
+                  <PackageSearch className="h-4 w-4" />
+                </Button>
+              </Link>
+            )}
             <ThemeToggle />
             <NotificationBell />
             <AccountMenu />

@@ -32,12 +32,13 @@ import {
   CalendarClock,
   CheckCircle2,
   TimerReset,
-  UserRoundCog
+  UserRoundCog,
+  PackageSearch
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { getSignedUrl, getSignedUrls } from '@/lib/storage';
-import { addTicketMessage, finishTicketService, startTicketService, updateTicketStatus } from '@/lib/ticketActions';
+import { addTicketMessage, finishTicketService, startTicketService, updateTicketAssetService, updateTicketStatus } from '@/lib/ticketActions';
 
 type TicketStatus = 'aberto' | 'em_andamento' | 'aguardando_resposta' | 'resolvido' | 'fechado';
 type TicketPriority = 'baixa' | 'media' | 'alta' | 'critica';
@@ -124,6 +125,11 @@ interface TicketData {
   resolved_at: string | null;
   closed_at: string | null;
   agente_id: string | null;
+  asset_id: string | null;
+  asset_diagnosis: string | null;
+  asset_estimated_cost: number | null;
+  asset_final_cost: number | null;
+  asset_returned_at: string | null;
   solicitante: {
     id: string;
     nome: string;
@@ -185,6 +191,12 @@ export default function TicketWorkspace() {
   const [serviceFinishedAt, setServiceFinishedAt] = useState(toDateTimeLocal());
   const [serviceNotes, setServiceNotes] = useState('');
   const [updatingService, setUpdatingService] = useState(false);
+  const [linkedAsset, setLinkedAsset] = useState<{ id: string; asset_code: string; name: string } | null>(null);
+  const [assetDiagnosis, setAssetDiagnosis] = useState('');
+  const [assetEstimatedCost, setAssetEstimatedCost] = useState('');
+  const [assetFinalCost, setAssetFinalCost] = useState('');
+  const [assetReturned, setAssetReturned] = useState(false);
+  const [savingAssetService, setSavingAssetService] = useState(false);
   const [signedUrls, setSignedUrls] = useState<{ imagens: any[], arquivos: any[], audio: any }>({ imagens: [], arquivos: [], audio: null });
   
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -247,6 +259,19 @@ export default function TicketWorkspace() {
 
       if (error) throw error;
       setTicket(data as unknown as TicketData);
+      setAssetDiagnosis((data as any).asset_diagnosis || '');
+      setAssetEstimatedCost((data as any).asset_estimated_cost?.toString() || '');
+      setAssetFinalCost((data as any).asset_final_cost?.toString() || '');
+      setAssetReturned(!!(data as any).asset_returned_at);
+      if ((data as any).asset_id) {
+        const { data: assetData } = await (supabase as any).from('assets')
+          .select('id, asset_code, name')
+          .eq('id', (data as any).asset_id)
+          .maybeSingle();
+        setLinkedAsset(assetData || null);
+      } else {
+        setLinkedAsset(null);
+      }
       if ((data as any).service_started_at) {
         setServiceStartedAt(toDateTimeLocal(new Date((data as any).service_started_at)));
       }
@@ -426,6 +451,25 @@ export default function TicketWorkspace() {
     }
   };
 
+  const saveAssetService = async () => {
+    if (!id || !ticket.asset_id) return;
+    setSavingAssetService(true);
+    try {
+      await updateTicketAssetService(id, {
+        diagnosis: assetDiagnosis,
+        estimatedCost: assetEstimatedCost ? Number(assetEstimatedCost.replace(',', '.')) : null,
+        finalCost: assetFinalCost ? Number(assetFinalCost.replace(',', '.')) : null,
+        returned: assetReturned,
+      });
+      await fetchTicket();
+      toast({ title: 'Manutenção patrimonial atualizada' });
+    } catch (error) {
+      toast({ title: 'Erro', description: error instanceof Error ? error.message : 'Não foi possível salvar.', variant: 'destructive' });
+    } finally {
+      setSavingAssetService(false);
+    }
+  };
+
   const sendMessage = async () => {
     if (!newMessage.trim() || !ticket) return;
     setSending(true);
@@ -523,6 +567,20 @@ export default function TicketWorkspace() {
             <CardHeader className="py-3"><CardTitle className="text-base">Descrição</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm whitespace-pre-wrap">{ticket.descricao}</p>
+              {ticket.asset_id && linkedAsset && (
+                <div className="space-y-3 rounded-md border border-primary/20 bg-primary/5 p-3">
+                  <Link to={`/patrimonio/${linkedAsset.id}`} className="flex items-center gap-2">
+                    <PackageSearch className="h-5 w-5 text-primary" />
+                    <div><p className="font-mono text-xs text-primary">{linkedAsset.asset_code}</p><p className="text-sm font-medium">{linkedAsset.name}</p></div>
+                  </Link>
+                  <div className="space-y-3 md:hidden">
+                    <Textarea value={assetDiagnosis} onChange={(event) => setAssetDiagnosis(event.target.value)} placeholder="Diagnóstico e serviço realizado" className="min-h-20 text-xs" />
+                    <div className="grid grid-cols-2 gap-2"><Input inputMode="decimal" value={assetEstimatedCost} onChange={(event) => setAssetEstimatedCost(event.target.value)} placeholder="Custo estimado" /><Input inputMode="decimal" value={assetFinalCost} onChange={(event) => setAssetFinalCost(event.target.value)} placeholder="Custo final" /></div>
+                    <label className="flex items-center gap-2 text-xs"><Checkbox checked={assetReturned} onCheckedChange={(checked) => setAssetReturned(!!checked)} />Bem devolvido</label>
+                    <Button onClick={saveAssetService} disabled={savingAssetService} size="sm" className="w-full">Salvar manutenção</Button>
+                  </div>
+                </div>
+              )}
               {hasAttachments && (
                 <div className="flex gap-2 flex-wrap">
                    {signedUrls.imagens.map((url, i) => (
@@ -769,6 +827,27 @@ export default function TicketWorkspace() {
                 )}
               </CardContent>
            </Card>
+
+           {ticket.asset_id && linkedAsset && (
+             <Card>
+               <CardHeader className="py-3">
+                 <CardTitle className="flex items-center gap-2 text-sm"><PackageSearch className="h-4 w-4" />Patrimônio em atendimento</CardTitle>
+               </CardHeader>
+               <CardContent className="space-y-3">
+                 <Link to={`/patrimonio/${linkedAsset.id}`} className="block rounded-md border bg-muted/30 p-2 hover:bg-muted">
+                   <p className="font-mono text-xs text-primary">{linkedAsset.asset_code}</p>
+                   <p className="text-sm font-medium">{linkedAsset.name}</p>
+                 </Link>
+                 <div className="space-y-1"><Label className="text-xs">Diagnóstico</Label><Textarea value={assetDiagnosis} onChange={(event) => setAssetDiagnosis(event.target.value)} placeholder="Defeito identificado e serviço realizado" className="min-h-20 text-xs" /></div>
+                 <div className="grid grid-cols-2 gap-2">
+                   <div className="space-y-1"><Label className="text-xs">Custo estimado</Label><Input inputMode="decimal" value={assetEstimatedCost} onChange={(event) => setAssetEstimatedCost(event.target.value)} placeholder="0,00" /></div>
+                   <div className="space-y-1"><Label className="text-xs">Custo final</Label><Input inputMode="decimal" value={assetFinalCost} onChange={(event) => setAssetFinalCost(event.target.value)} placeholder="0,00" /></div>
+                 </div>
+                 <label className="flex items-center gap-2 rounded-md border p-2 text-xs"><Checkbox checked={assetReturned} onCheckedChange={(checked) => setAssetReturned(!!checked)} />Bem devolvido e disponível</label>
+                 <Button onClick={saveAssetService} disabled={savingAssetService} className="w-full" size="sm">{savingAssetService && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar manutenção</Button>
+               </CardContent>
+             </Card>
+           )}
 
            {/* Card Solicitante */}
            <Card>

@@ -4,6 +4,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
+import { lazy, Suspense } from "react";
+import { Loader2 } from "lucide-react";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
@@ -18,6 +20,13 @@ import TicketWorkspace from "./pages/TicketWorkspace";
 import Admin from "./pages/Admin";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
+const AssetsDashboard = lazy(() => import("./pages/AssetsDashboard"));
+const AssetFormPage = lazy(() => import("./pages/AssetFormPage"));
+const AssetDetail = lazy(() => import("./pages/AssetDetail"));
+const AssetImport = lazy(() => import("./pages/AssetImport"));
+const AssetMovements = lazy(() => import("./pages/AssetMovements"));
+const AssetSettings = lazy(() => import("./pages/AssetSettings"));
+const AssetReports = lazy(() => import("./pages/AssetReports"));
 
 const queryClient = new QueryClient();
 
@@ -29,6 +38,7 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
+            <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-background"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
             <Routes>
               <Route path="/auth" element={<Auth />} />
               <Route path="/reset-password" element={<ResetPassword />} />
@@ -104,8 +114,17 @@ const App = () => (
                   </ProtectedRoute>
                 }
               />
+              <Route path="/patrimonio" element={<ProtectedRoute requireAssetAccess><AssetsDashboard /></ProtectedRoute>} />
+              <Route path="/patrimonio/novo" element={<ProtectedRoute requireAssetAccess><AssetFormPage /></ProtectedRoute>} />
+              <Route path="/patrimonio/importar" element={<ProtectedRoute requireAssetAccess><AssetImport /></ProtectedRoute>} />
+              <Route path="/patrimonio/movimentacoes" element={<ProtectedRoute requireAssetAccess><AssetMovements /></ProtectedRoute>} />
+              <Route path="/patrimonio/configuracoes" element={<ProtectedRoute requireAssetAccess><AssetSettings /></ProtectedRoute>} />
+              <Route path="/patrimonio/:id" element={<ProtectedRoute requireAssetAccess><AssetDetail /></ProtectedRoute>} />
+              <Route path="/patrimonio/:id/editar" element={<ProtectedRoute requireAssetAccess><AssetFormPage /></ProtectedRoute>} />
+              <Route path="/relatorios/patrimonio" element={<ProtectedRoute requireAssetAccess><AssetReports /></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
+            </Suspense>
           </BrowserRouter>
         </TooltipProvider>
       </AuthProvider>

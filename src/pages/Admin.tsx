@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AccountMenu } from '@/components/AccountMenu';
-import { ArrowLeft, BarChart3, Loader2, Users, Mail, UserRoundCog } from 'lucide-react';
+import { ArrowLeft, BarChart3, Loader2, Users, Mail, UserRoundCog, PackageSearch } from 'lucide-react';
 import { UserManagement } from '@/components/admin/UserManagement';
 import { InvitationManagement } from '@/components/admin/InvitationManagement';
 import { DepartmentEmailManagement } from '@/components/admin/DepartmentEmailManagement';
@@ -72,6 +72,14 @@ export default function Admin() {
               </Button>
               <Button variant="outline" size="icon" className="sm:hidden h-8 w-8">
                 <BarChart3 className="h-4 w-4" />
+              </Button>
+            </Link>
+            <Link to="/patrimonio">
+              <Button variant="outline" size="sm" className="hidden h-8 sm:flex">
+                <PackageSearch className="mr-2 h-4 w-4" />Patrimônio
+              </Button>
+              <Button variant="outline" size="icon" className="h-8 w-8 sm:hidden" title="Patrimônio">
+                <PackageSearch className="h-4 w-4" />
               </Button>
             </Link>
             <AccountMenu />

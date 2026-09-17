@@ -8,3 +8,6 @@ verify_jwt = true
 
 [functions.admin-user-actions]
 verify_jwt = true
+
+[functions.asset-actions]
+verify_jwt = true
