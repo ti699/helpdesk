@@ -77,7 +77,7 @@ CREATE TABLE public.assets (
   warranty_until DATE,
   department TEXT,
   location_id UUID REFERENCES public.asset_locations(id) ON DELETE SET NULL,
-  responsible_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  responsible_user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   responsible_name TEXT,
   status_id UUID REFERENCES public.asset_statuses(id) ON DELETE RESTRICT,
   notes TEXT,
