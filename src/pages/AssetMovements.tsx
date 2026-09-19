@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Ban, CheckCircle2, Loader2, Plus, Repeat2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { approveAssetMovement, cancelAssetMovement, createAssetMovement } from '@/lib/assetActions';
@@ -18,7 +19,7 @@ import { AssetLocation, AssetMovement, AssetMovementType, AssetProfile, AssetRec
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-const db = supabase as any;
+const db = supabase as unknown as SupabaseClient;
 const statusColors: Record<string, string> = { pendente: 'bg-yellow-100 text-yellow-800', aprovada: 'bg-blue-100 text-blue-800', concluida: 'bg-green-100 text-green-800', cancelada: 'bg-slate-100 text-slate-700' };
 
 export default function AssetMovements() {
@@ -45,7 +46,7 @@ export default function AssetMovements() {
       db.from('asset_locations').select('*').eq('active', true).order('name'),
       db.from('asset_statuses').select('*').eq('active', true).order('sort_order'),
     ]);
-    setMovements(movementResult.data || []); setAssets(assetResult.data || []); setProfiles(profileResult.data || []); setLocations(locationResult.data || []); setStatuses(statusResult.data || []); setLoading(false);
+    setMovements((movementResult.data || []) as AssetMovement[]); setAssets((assetResult.data || []) as AssetRecord[]); setProfiles((profileResult.data || []) as AssetProfile[]); setLocations((locationResult.data || []) as AssetLocation[]); setStatuses((statusResult.data || []) as AssetStatus[]); setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
 

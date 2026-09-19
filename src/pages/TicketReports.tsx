@@ -21,6 +21,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { AccountMenu } from '@/components/AccountMenu';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { AppHeader } from '@/components/AppHeader';
 import { StatusMultiSelect } from '@/components/reports/StatusMultiSelect';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -1156,39 +1157,7 @@ export default function TicketReports() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
-        <div className="container flex h-16 items-center justify-between px-3 sm:px-4">
-          <div className="flex min-w-0 items-center gap-2 sm:gap-4">
-            <Link to="/dashboard">
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-            </Link>
-            <img
-              src="/lovable-uploads/8bb8e15f-a27f-4dfe-b08a-7d5ce03cff09.png"
-              alt="Grupo Astrotur"
-              className="h-8 object-contain sm:h-10"
-            />
-            <div className="hidden sm:block">
-              <h1 className="text-lg font-semibold">Relatório de Tickets</h1>
-              <p className="text-xs text-muted-foreground">Prévia operacional antes da exportação</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="hidden sm:flex">
-              {canViewAllSystem ? 'Todo o sistema' : forcedTeamType === 'Manutenção predial' ? 'Manutenção' : 'TI'}
-            </Badge>
-            <Button size="sm" onClick={exportPDF} disabled={!periodValidation.valid || loading}>
-              <Download className="mr-2 h-4 w-4" />
-              Exportar PDF
-            </Button>
-            <ThemeToggle />
-            <NotificationBell />
-            <AccountMenu />
-          </div>
-        </div>
-      </header>
+      <AppHeader title="Relatório de Tickets" subtitle="Prévia operacional antes da exportação" badge={canViewAllSystem ? 'Todo o sistema' : forcedTeamType === 'Manutenção predial' ? 'Manutenção' : 'TI'} actions={<Button size="sm" onClick={exportPDF} disabled={!periodValidation.valid || loading}><Download className="mr-2 h-4 w-4" />Exportar PDF</Button>} />
 
       <main className="container space-y-4 px-3 py-3 sm:px-4 sm:py-4">
         <Card>

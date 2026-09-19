@@ -66,6 +66,37 @@ const nullableMoney = (value: unknown) => {
   return amount;
 };
 
+const normalizeKey = (value: unknown) => text(value, 200)
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .toLocaleLowerCase("pt-BR")
+  .replace(/[^a-z0-9]/g, "");
+
+const normalizeDate = (value: unknown) => {
+  if (value === "" || value == null) return null;
+  if (typeof value === "number") {
+    const date = new Date(Date.UTC(1899, 11, 30));
+    date.setUTCDate(date.getUTCDate() + Math.floor(value));
+    return date.toISOString().slice(0, 10);
+  }
+  const raw = text(value, 20);
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  const br = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(raw);
+  const candidate = iso ? `${iso[1]}-${iso[2]}-${iso[3]}` : br ? `${br[3]}-${br[2]}-${br[1]}` : "";
+  if (!candidate) return null;
+  const parsed = new Date(`${candidate}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === candidate ? candidate : null;
+};
+
+const normalizeMoney = (value: unknown) => {
+  if (value === "" || value == null) return null;
+  if (typeof value === "number") return Number.isFinite(value) && value >= 0 ? value : null;
+  const raw = String(value).trim().replace(/\s/g, "").replace(/^R\$/i, "");
+  const normalized = raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw;
+  const amount = Number(normalized);
+  return Number.isFinite(amount) && amount >= 0 ? amount : null;
+};
+
 const getContext = async (authorization: string): Promise<RequestContext> => {
   const userClient = createClient(supabaseUrl, supabaseAnonKey, {
     global: { headers: { Authorization: authorization } },
@@ -274,96 +305,151 @@ serve(async (req) => {
       return jsonResponse({ success: true, data: { movement: data } });
     }
 
-    if (action === "import_assets") {
+    if (action === "validate_import") {
       requireManager(context);
-      const fileName = text(payload.fileName, 240) || "importacao.csv";
+      const fileName = text(payload.fileName, 240) || "importacao";
+      const sourceSheet = nullableText(payload.sourceSheet, 120);
+      const columnMapping = payload.columnMapping && typeof payload.columnMapping === "object" ? payload.columnMapping : {};
       const rows = Array.isArray(payload.rows) ? payload.rows.slice(0, 2000) as Record<string, unknown>[] : [];
-      if (!rows.length) throw new HttpError(400, "Nenhuma linha válida para importar");
-      const [{ data: categories }, { data: statuses }, { data: locations }, { data: existingAssets }] = await Promise.all([
-        admin.from("asset_categories").select("id, name"),
-        admin.from("asset_statuses").select("id, name, is_default"),
-        admin.from("asset_locations").select("id, name"),
+      if (!rows.length) throw new HttpError(400, "Nenhuma linha para validar");
+      const [{ data: categories }, { data: statuses }, { data: locations }, { data: existingAssets }, { data: profiles }] = await Promise.all([
+        admin.from("asset_categories").select("id, name").eq("active", true),
+        admin.from("asset_statuses").select("id, name, color, is_terminal, is_default").eq("active", true),
+        admin.from("asset_locations").select("id, name").eq("active", true),
         admin.from("assets").select("asset_code"),
+        admin.from("profiles").select("id, email, nome").eq("active", true),
       ]);
-      const normalized = (value: unknown) => text(value, 200).toLocaleLowerCase("pt-BR");
-      const categoryMap = new Map((categories || []).map((row) => [normalized(row.name), row.id]));
-      const statusMap = new Map((statuses || []).map((row) => [normalized(row.name), row.id]));
-      const locationMap = new Map((locations || []).map((row) => [normalized(row.name), row.id]));
-      const defaultStatusId = (statuses || []).find((row) => row.is_default)?.id || null;
-      const codes = new Set((existingAssets || []).map((row) => normalized(row.asset_code)));
+      const categoryMap = new Map((categories || []).map((row) => [normalizeKey(row.name), row.id]));
+      const statusMap = new Map((statuses || []).map((row) => [normalizeKey(row.name), row.id]));
+      const locationMap = new Map((locations || []).map((row) => [normalizeKey(row.name), row.id]));
+      const profileMap = new Map((profiles || []).map((row) => [String(row.email || "").toLowerCase(), row]));
+      const codes = new Set((existingAssets || []).map((row) => normalizeKey(row.asset_code)));
       const seen = new Set<string>();
-      const valid: Record<string, unknown>[] = [];
-      const errors: { row_number: number; message: string; raw_data: Record<string, unknown> }[] = [];
+      const stagedRows: Array<Record<string, unknown>> = [];
+      const unknown = { categories: new Map<string, string>(), statuses: new Map<string, string>(), locations: new Map<string, string>() };
+      let validRows = 0;
+      let errorRows = 0;
+      let warningRows = 0;
 
       rows.forEach((row, index) => {
-        const code = text(row.asset_code || row.codigo || row.patrimonio, 80);
-        const name = text(row.name || row.nome || row.item || row.tipo, 160);
-        const codeKey = normalized(code);
-        const messages: string[] = [];
-        if (!code) messages.push("código obrigatório");
-        if (!name) messages.push("nome obrigatório");
-        if (codeKey && (codes.has(codeKey) || seen.has(codeKey))) messages.push("código duplicado");
-        const categoryName = text(row.category || row.categoria, 120);
+        const code = text(row.asset_code, 80);
+        const name = text(row.name, 160);
+        const codeKey = normalizeKey(code);
+        const errors: string[] = [];
+        const warnings: string[] = [];
+        if (!code) errors.push("Código obrigatório");
+        if (!name) errors.push("Nome obrigatório");
+        if (codeKey && (codes.has(codeKey) || seen.has(codeKey))) errors.push("Código duplicado");
+
+        const categoryName = text(row.category, 120);
         const statusName = text(row.status, 120);
-        const locationName = text(row.location || row.localizacao || row.local, 120);
-        const rawPurchaseValue = row.purchase_value || row.valor;
-        const purchaseValueText = String(rawPurchaseValue || "").trim();
-        const purchaseValue = purchaseValueText
-          ? Number(purchaseValueText.includes(",") ? purchaseValueText.replace(/\./g, "").replace(",", ".") : purchaseValueText)
-          : null;
-        if (categoryName && !categoryMap.has(normalized(categoryName))) messages.push(`categoria não cadastrada: ${categoryName}`);
-        if (statusName && !statusMap.has(normalized(statusName))) messages.push(`status não cadastrado: ${statusName}`);
-        if (locationName && !locationMap.has(normalized(locationName))) messages.push(`localização não cadastrada: ${locationName}`);
-        if (purchaseValue !== null && (!Number.isFinite(purchaseValue) || purchaseValue < 0)) messages.push("valor de aquisição inválido");
-        if (messages.length) {
-          errors.push({ row_number: index + 2, message: messages.join("; "), raw_data: row });
-          return;
+        const locationName = text(row.location, 120);
+        const categoryKey = normalizeKey(categoryName);
+        const statusKey = normalizeKey(statusName);
+        const locationKey = normalizeKey(locationName);
+        const purchaseDate = normalizeDate(row.purchase_date);
+        const warrantyUntil = normalizeDate(row.warranty_until);
+        const purchaseValue = normalizeMoney(row.purchase_value);
+        if (row.purchase_date && !purchaseDate) errors.push("Data de aquisição inválida");
+        if (row.warranty_until && !warrantyUntil) errors.push("Data de garantia inválida");
+        if (row.purchase_value !== "" && row.purchase_value != null && purchaseValue === null) errors.push("Valor de aquisição inválido");
+        if (categoryName && !categoryMap.has(categoryKey)) {
+          warnings.push(`Categoria não cadastrada: ${categoryName}`);
+          unknown.categories.set(categoryKey, categoryName);
         }
-        seen.add(codeKey);
-        valid.push({
+        if (statusName && !statusMap.has(statusKey)) {
+          warnings.push(`Status não cadastrado: ${statusName}`);
+          unknown.statuses.set(statusKey, statusName);
+        }
+        if (locationName && !locationMap.has(locationKey)) {
+          warnings.push(`Localização não cadastrada: ${locationName}`);
+          unknown.locations.set(locationKey, locationName);
+        }
+        const responsibleEmail = text(row.responsible_email, 240).toLowerCase();
+        if (responsibleEmail && !/^\S+@\S+\.\S+$/.test(responsibleEmail)) errors.push("E-mail do responsável inválido");
+        if (responsibleEmail && !profileMap.has(responsibleEmail)) warnings.push("E-mail sem usuário ativo; responsável será mantido como texto livre");
+        if (codeKey) seen.add(codeKey);
+
+        const normalizedData = {
           asset_code: code,
           name,
-          description: nullableText(row.description || row.descricao, 2000),
-          category_id: categoryName ? categoryMap.get(normalized(categoryName)) : null,
-          brand: nullableText(row.brand || row.marca, 120),
-          model: nullableText(row.model || row.modelo, 120),
-          serial_number: nullableText(row.serial_number || row.serial, 160),
-          invoice_number: nullableText(row.invoice_number || row.nf, 120),
-          purchase_date: nullableText(row.purchase_date || row.data_aquisicao || row.data, 10),
+          description: nullableText(row.description, 2000),
+          category: categoryName,
+          category_key: categoryKey,
+          category_id: categoryName ? categoryMap.get(categoryKey) || null : null,
+          brand: nullableText(row.brand, 120),
+          model: nullableText(row.model, 120),
+          serial_number: nullableText(row.serial_number, 160),
+          invoice_number: nullableText(row.invoice_number, 120),
+          purchase_date: purchaseDate,
           purchase_value: purchaseValue,
-          warranty_until: nullableText(row.warranty_until || row.garantia, 10),
-          department: nullableText(row.department || row.setor, 120),
-          location_id: locationName ? locationMap.get(normalized(locationName)) : null,
-          responsible_name: nullableText(row.responsible_name || row.responsavel, 160),
-          status_id: statusName ? statusMap.get(normalized(statusName)) : defaultStatusId,
-          notes: nullableText(row.notes || row.observacoes, 3000),
-          created_by: context.userId,
-          updated_by: context.userId,
-        });
+          warranty_until: warrantyUntil,
+          department: nullableText(row.department, 120),
+          location: locationName,
+          location_key: locationKey,
+          location_id: locationName ? locationMap.get(locationKey) || null : null,
+          responsible_name: nullableText(row.responsible_name, 160),
+          responsible_email: responsibleEmail || null,
+          status: statusName,
+          status_key: statusKey,
+          status_id: statusName ? statusMap.get(statusKey) || null : null,
+          notes: nullableText(row.notes, 3000),
+        };
+        const rowStatus = errors.length ? "error" : warnings.length ? "warning" : "valid";
+        if (rowStatus === "error") errorRows += 1;
+        else {
+          validRows += 1;
+          if (rowStatus === "warning") warningRows += 1;
+        }
+        stagedRows.push({ row_number: index + 2, raw_data: row, normalized_data: normalizedData, errors, warnings, row_status: rowStatus });
       });
 
       const { data: job, error: jobError } = await admin.from("asset_import_jobs").insert({
         file_name: fileName,
+        source_sheet: sourceSheet,
+        column_mapping: columnMapping,
         total_rows: rows.length,
-        valid_rows: valid.length,
+        valid_rows: validRows,
         imported_rows: 0,
-        error_rows: errors.length,
-        status: "processando",
+        error_rows: errorRows,
+        status: "validado",
+        validation_summary: { warningRows },
         imported_by: context.userId,
       }).select("*").single();
       if (jobError) throw new HttpError(400, jobError.message);
-      if (errors.length) await admin.from("asset_import_errors").insert(errors.map((error) => ({ ...error, import_job_id: job.id })));
-      let importedRows = 0;
-      if (valid.length) {
-        const { data: inserted, error: insertError } = await admin.from("assets").insert(valid).select("id");
-        if (insertError) {
-          await admin.from("asset_import_jobs").update({ status: "falhou", completed_at: new Date().toISOString() }).eq("id", job.id);
-          throw new HttpError(400, insertError.message);
-        }
-        importedRows = inserted?.length || 0;
-      }
-      await admin.from("asset_import_jobs").update({ imported_rows: importedRows, status: "concluido", completed_at: new Date().toISOString() }).eq("id", job.id);
-      return jsonResponse({ success: true, data: { jobId: job.id, total: rows.length, imported: importedRows, errors } });
+      const { error: rowsError } = await admin.from("asset_import_rows").insert(stagedRows.map((row) => ({ ...row, import_job_id: job.id })));
+      if (rowsError) throw new HttpError(400, rowsError.message);
+      const preview = stagedRows.map(({ raw_data: _raw, ...row }) => row);
+      return jsonResponse({ success: true, data: {
+        jobId: job.id,
+        total: rows.length,
+        valid: validRows,
+        errors: errorRows,
+        warnings: warningRows,
+        preview,
+        unknown: {
+          categories: [...unknown.categories].map(([key, name]) => ({ key, name })),
+          statuses: [...unknown.statuses].map(([key, name]) => ({ key, name })),
+          locations: [...unknown.locations].map(([key, name]) => ({ key, name })),
+        },
+        options: { categories, statuses, locations },
+      } });
+    }
+
+    if (action === "commit_import") {
+      requireManager(context);
+      const jobId = text(payload.jobId, 50);
+      const resolutions = payload.resolutions && typeof payload.resolutions === "object" ? payload.resolutions : {};
+      const { data, error } = await context.userClient.rpc("commit_asset_import", {
+        _job_id: jobId,
+        _resolutions: resolutions,
+      });
+      if (error) throw new HttpError(400, error.message);
+      return jsonResponse({ success: true, data });
+    }
+
+    if (action === "import_assets") {
+      throw new HttpError(410, "Atualize a tela e use o novo assistente de importação");
     }
 
     if (action === "create_term") {

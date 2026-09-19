@@ -38,6 +38,51 @@ export type Database = {
         }
         Relationships: []
       }
+      application_error_logs: {
+        Row: {
+          app_version: string | null
+          browser: string | null
+          fingerprint: string
+          first_seen_at: string
+          id: string
+          last_seen_at: string
+          message: string
+          occurrence_count: number
+          resolved_at: string | null
+          resolved_by: string | null
+          route: string | null
+          user_id: string | null
+        }
+        Insert: {
+          app_version?: string | null
+          browser?: string | null
+          fingerprint: string
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          message: string
+          occurrence_count?: number
+          resolved_at?: string | null
+          resolved_by?: string | null
+          route?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          app_version?: string | null
+          browser?: string | null
+          fingerprint?: string
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          message?: string
+          occurrence_count?: number
+          resolved_at?: string | null
+          resolved_by?: string | null
+          route?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       feedbacks: {
         Row: {
           avaliador_id: string

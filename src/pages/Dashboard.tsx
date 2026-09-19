@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -31,6 +31,9 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { TicketFilters } from '@/components/tickets/TicketFilters';
 import { BulkActions } from '@/components/tickets/BulkActions';
+import { AppHeader } from '@/components/AppHeader';
+import { TicketSearch } from '@/components/tickets/TicketSearch';
+import { matchesTicketSearch } from '@/lib/ticketSearch';
 
 type TicketStatus = 'aberto' | 'em_andamento' | 'aguardando_resposta' | 'resolvido' | 'fechado';
 type TicketStatsQuery = ReturnType<ReturnType<typeof supabase.from>['select']>;
@@ -137,15 +140,35 @@ export default function Dashboard() {
   const [setorFilter, setSetorFilter] = useState<string>('all');
 
   // Filters
-  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<TicketStatus[]>([]);
   const [periodoInicio, setPeriodoInicio] = useState('');
   const [periodoFim, setPeriodoFim] = useState('');
   const [fechadoInicio, setFechadoInicio] = useState('');
   const [fechadoFim, setFechadoFim] = useState('');
   const [ratingMin, setRatingMin] = useState<number | undefined>(undefined);
+  const [searchQuery, setSearchQuery] = useState('');
   
   // Selection
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  const visibleTickets = useMemo(() => {
+    return tickets.filter((ticket) => matchesTicketSearch([
+        ticket.protocolo,
+        ticket.titulo,
+        ticket.solicitante?.nome,
+        ticket.setor,
+        ticket.categoria,
+        ticket.tipo,
+        ticket.prioridade,
+        ticket.status,
+        statusConfig[ticket.status]?.label,
+      ], searchQuery));
+  }, [searchQuery, tickets]);
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    setSelectedIds([]);
+  };
 
   const getClosedPeriodError = () => {
     if ((fechadoInicio && !isValidDateInput(fechadoInicio)) || (fechadoFim && !isValidDateInput(fechadoFim))) {
@@ -534,7 +557,7 @@ export default function Dashboard() {
   };
   
   const handleSelectAll = () => {
-    setSelectedIds(tickets.map(t => t.id));
+    setSelectedIds(visibleTickets.map(t => t.id));
   };
   
   const handleDeselectAll = () => {
@@ -586,72 +609,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
-        <div className="container flex h-16 items-center justify-between px-3 sm:px-4">
-          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-            <img 
-              src="/lovable-uploads/8bb8e15f-a27f-4dfe-b08a-7d5ce03cff09.png" 
-              alt="Grupo Astrotur" 
-              className="h-8 sm:h-10 object-contain flex-shrink-0"
-            />
-            <div className="hidden sm:block min-w-0">
-              <h1 className="text-sm sm:text-lg font-semibold text-foreground truncate">Ticket TI</h1>
-              <p className="text-xs text-muted-foreground">Painel do Agente</p>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-1 sm:gap-4">
-            <Badge variant="outline" className="hidden sm:flex gap-1 text-xs">
-              {role === 'agente_manutencao' ? (
-                <Wrench className="h-3 w-3" />
-              ) : role === 'agente_ti' ? (
-                <Monitor className="h-3 w-3" />
-              ) : null}
-              {teamLabel}
-            </Badge>
-            {(role === 'admin' || managementReportAccess) && (
-              <>
-                <Link to="/gestao">
-                  <Button variant="outline" size="sm" className="hidden sm:flex h-8">
-                    <BarChart3 className="mr-2 h-4 w-4" />
-                    Alta Gestão
-                  </Button>
-                  <Button variant="outline" size="icon" className="sm:hidden h-8 w-8">
-                    <BarChart3 className="h-4 w-4" />
-                  </Button>
-                </Link>
-              </>
-            )}
-            {assetAccess && (
-              <Link to="/patrimonio">
-                <Button variant="outline" size="sm" className="hidden h-8 sm:flex">
-                  <PackageSearch className="mr-2 h-4 w-4" />Patrimônio
-                </Button>
-                <Button variant="outline" size="icon" className="h-8 w-8 sm:hidden" title="Patrimônio">
-                  <PackageSearch className="h-4 w-4" />
-                </Button>
-              </Link>
-            )}
-            {role === 'admin' && (
-              <>
-                <Link to="/admin">
-                  <Button variant="outline" size="sm" className="hidden sm:flex h-8">
-                    <Settings className="mr-2 h-4 w-4" />
-                    Admin
-                  </Button>
-                  <Button variant="outline" size="icon" className="sm:hidden h-8 w-8">
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                </Link>
-              </>
-            )}
-            <ThemeToggle />
-            <NotificationBell />
-            <AccountMenu />
-          </div>
-        </div>
-      </header>
+      <AppHeader title="Painel do Agente" subtitle="Atendimento e acompanhamento operacional" badge={teamLabel} />
 
       {/* Main Content */}
       <main className="container px-3 sm:px-4 py-4 sm:py-6">
@@ -728,35 +686,46 @@ export default function Dashboard() {
 
         {/* Tickets List */}
         <Card>
-          <CardHeader className="flex flex-col gap-3 sm:gap-4 sm:flex-row sm:items-center sm:justify-between px-3 sm:px-6 py-3 sm:py-4">
+          <CardHeader className="flex flex-col gap-3 px-3 py-3 sm:px-6 sm:py-4 lg:flex-row lg:items-center">
             <div className="min-w-0">
               <CardTitle className="text-lg sm:text-xl">Tickets</CardTitle>
-              <CardDescription className="text-xs sm:text-sm">Gerencie as solicitações de suporte</CardDescription>
+              <CardDescription className="text-xs sm:text-sm">
+                {searchQuery
+                  ? `${visibleTickets.length} de ${tickets.length} tickets encontrados`
+                  : 'Gerencie as solicitações de suporte'}
+              </CardDescription>
             </div>
-            <div className="w-full sm:w-auto overflow-x-auto">
-              <TicketFilters
-                statusFilter={statusFilter}
-                onStatusChange={setStatusFilter}
-                tipoFilter={tipoFilter}
-                onTipoChange={setTipoFilter}
-                periodoInicio={periodoInicio}
-                onPeriodoInicioChange={setPeriodoInicio}
-                periodoFim={periodoFim}
-                onPeriodoFimChange={setPeriodoFim}
-                fechadoInicio={fechadoInicio}
-                onFechadoInicioChange={setFechadoInicio}
-                fechadoFim={fechadoFim}
-                onFechadoFimChange={setFechadoFim}
-                setorFilter={setorFilter}
-                onSetorChange={setSetorFilter}
-                ratingMin={ratingMin}
-                onRatingMinChange={setRatingMin}
-                showTipoFilter={role === 'admin'} // Only admin can filter by type
-                showAdvancedFilters={true}
-                onExportPDF={handleOpenTicketReport}
-                exportLabel="Gerar Relatório"
-                exportTitle="Gerar prévia do relatório operacional"
+            <div className="flex min-w-0 flex-1 flex-col gap-2 lg:flex-row lg:items-center lg:justify-end">
+              <TicketSearch
+                value={searchQuery}
+                onChange={handleSearchChange}
+                className="w-full lg:max-w-xl"
               />
+              <div className="w-full overflow-x-auto lg:w-auto lg:flex-shrink-0">
+                <TicketFilters
+                  statusFilter={statusFilter}
+                  onStatusChange={setStatusFilter}
+                  tipoFilter={tipoFilter}
+                  onTipoChange={setTipoFilter}
+                  periodoInicio={periodoInicio}
+                  onPeriodoInicioChange={setPeriodoInicio}
+                  periodoFim={periodoFim}
+                  onPeriodoFimChange={setPeriodoFim}
+                  fechadoInicio={fechadoInicio}
+                  onFechadoInicioChange={setFechadoInicio}
+                  fechadoFim={fechadoFim}
+                  onFechadoFimChange={setFechadoFim}
+                  setorFilter={setorFilter}
+                  onSetorChange={setSetorFilter}
+                  ratingMin={ratingMin}
+                  onRatingMinChange={setRatingMin}
+                  showTipoFilter={role === 'admin'}
+                  showAdvancedFilters={true}
+                  onExportPDF={handleOpenTicketReport}
+                  exportLabel="Gerar Relatório"
+                  exportTitle="Gerar prévia do relatório operacional"
+                />
+              </div>
             </div>
           </CardHeader>
           <CardContent className="px-3 sm:px-6">
@@ -765,11 +734,11 @@ export default function Dashboard() {
               <div className="mb-3 sm:mb-4">
                 <BulkActions
                   selectedIds={selectedIds}
-                  totalCount={tickets.length}
+                  totalCount={visibleTickets.length}
                   onSelectAll={handleSelectAll}
                   onDeselectAll={handleDeselectAll}
                   onDelete={handleDelete}
-                  isAllSelected={selectedIds.length === tickets.length}
+                  isAllSelected={visibleTickets.length > 0 && selectedIds.length === visibleTickets.length}
                   allowDelete={role === 'admin'}
                 />
               </div>
@@ -787,17 +756,19 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
-            ) : tickets.length === 0 ? (
+            ) : visibleTickets.length === 0 ? (
               <div className="py-8 sm:py-12 text-center">
                 <Ticket className="mx-auto h-10 sm:h-12 w-10 sm:w-12 text-muted-foreground/50" />
-                <h3 className="mt-3 sm:mt-4 text-base sm:text-lg font-medium">Nenhum ticket encontrado</h3>
+                <h3 className="mt-3 sm:mt-4 text-base sm:text-lg font-medium">
+                  {searchQuery ? 'Nenhum resultado para esta pesquisa' : 'Nenhum ticket encontrado'}
+                </h3>
                 <p className="mt-1 sm:mt-2 text-xs sm:text-sm text-muted-foreground px-2">
-                  Não há tickets com o filtro selecionado
+                  {searchQuery ? 'Tente outro protocolo, título, nome ou termo.' : 'Não há tickets com o filtro selecionado'}
                 </p>
               </div>
             ) : (
               <div className="space-y-2 sm:space-y-3">
-                {tickets.map((ticket) => (
+                {visibleTickets.map((ticket) => (
                   <div
                     key={ticket.id}
                     className="flex items-start sm:items-center gap-2 sm:gap-4 rounded-lg border p-3 sm:p-4 transition-colors hover:bg-accent"

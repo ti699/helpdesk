@@ -8,6 +8,7 @@ import { lazy, Suspense } from "react";
 import { Loader2 } from "lucide-react";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import NovoTicket from "./pages/NovoTicket";
@@ -37,6 +38,7 @@ const App = () => (
         <TooltipProvider>
           <Toaster />
           <Sonner />
+          <AppErrorBoundary>
           <BrowserRouter>
             <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-background"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
             <Routes>
@@ -126,6 +128,7 @@ const App = () => (
             </Routes>
             </Suspense>
           </BrowserRouter>
+          </AppErrorBoundary>
         </TooltipProvider>
       </AuthProvider>
     </ThemeProvider>

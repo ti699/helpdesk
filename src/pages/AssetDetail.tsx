@@ -5,6 +5,7 @@ import jsPDF from 'jspdf';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { createAssetTerm } from '@/lib/assetActions';
@@ -17,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AssetMovement, AssetRecord, formatCurrency, movementLabels } from '@/types/assets';
 
-const db = supabase as any;
+const db = supabase as unknown as SupabaseClient;
 
 interface AuditLog { id: string; action: string; description: string | null; before_data: Record<string, unknown> | null; after_data: Record<string, unknown> | null; created_at: string; user_id: string | null }
 interface AssetTicket { id: string; protocolo: string; titulo: string; status: string; prioridade: string; created_at: string }

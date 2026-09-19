@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Boxes, CircleDollarSign, FileWarning, Loader2, PackageCheck, Pencil, Search, ShieldAlert, UserRoundX } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { deactivateAsset } from '@/lib/assetActions';
@@ -16,7 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { AssetCategory, AssetLocation, AssetRecord, AssetStatus, formatCurrency, normalizeAssetText } from '@/types/assets';
 
-const db = supabase as any;
+const db = supabase as unknown as SupabaseClient;
 
 export default function AssetsDashboard() {
   const { assetAccess } = useAuth();

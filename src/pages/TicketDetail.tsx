@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { AccountMenu } from '@/components/AccountMenu';
+import { AppHeader } from '@/components/AppHeader';
 import { 
   ArrowLeft, 
   Send, 
@@ -610,55 +611,7 @@ export default function TicketDetail() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur">
-        <div className="container flex h-16 items-center gap-2 sm:gap-4 px-3 sm:px-4">
-          <Link to="/">
-            <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0">
-              <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
-            </Button>
-          </Link>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-xs sm:text-sm text-muted-foreground flex-shrink-0">
-                {ticket.protocolo}
-              </span>
-              <Badge className={`${statusConfig[ticket.status].color} text-xs flex-shrink-0`}>
-                {statusConfig[ticket.status].icon}
-                <span className="ml-1 hidden xs:inline">{statusConfig[ticket.status].label}</span>
-              </Badge>
-            </div>
-            <h1 className="line-clamp-1 text-sm sm:text-lg font-semibold">{ticket.titulo}</h1>
-          </div>
-          <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs sm:text-sm"
-              onClick={handleExportPDF}
-              disabled={exportingPDF}
-              title="Exportar PDF detalhado do ticket"
-            >
-              {exportingPDF ? (
-                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-              ) : (
-                <FileDown className="mr-1 h-4 w-4" />
-              )}
-              Exportar PDF
-            </Button>
-            <ThemeToggle />
-            <NotificationBell />
-            {canEvaluate && (
-              <Button onClick={() => setShowFeedback(true)} size="sm" className="text-xs sm:text-sm">
-                <Star className="mr-1 sm:mr-2 h-4 w-4 fill-yellow-300 text-yellow-300" />
-                <span className="hidden xs:inline">Avalie este atendimento</span>
-                <span className="xs:hidden">Avaliar</span>
-              </Button>
-            )}
-            <AccountMenu />
-          </div>
-        </div>
-      </header>
+      <AppHeader title={ticket.titulo} subtitle={ticket.protocolo} badge={statusConfig[ticket.status].label} actions={<div className="flex items-center gap-1"><Button variant="outline" size="sm" onClick={handleExportPDF} disabled={exportingPDF} title="Exportar PDF detalhado do ticket">{exportingPDF ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <FileDown className="mr-1 h-4 w-4" />}<span className="hidden sm:inline">Exportar PDF</span></Button>{canEvaluate && <Button onClick={() => setShowFeedback(true)} size="sm"><Star className="mr-1 h-4 w-4 fill-yellow-300 text-yellow-300" /><span className="hidden sm:inline">Avaliar</span></Button>}</div>} />
 
       {/* Content */}
       <main className="container flex flex-1 flex-col gap-3 sm:gap-4 px-3 sm:px-4 py-3 sm:py-4">

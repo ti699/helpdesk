@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Loader2, Save } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { useToast } from '@/hooks/use-toast';
 import { AssetHeader } from '@/components/assets/AssetHeader';
 import { Button } from '@/components/ui/button';
@@ -13,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { createAsset, updateAsset } from '@/lib/assetActions';
 import { AssetCategory, AssetLocation, AssetProfile, AssetRecord, AssetStatus } from '@/types/assets';
 
-const db = supabase as any;
+const db = supabase as unknown as SupabaseClient;
 const emptyForm = {
   assetCode: '', name: '', description: '', categoryId: '', brand: '', model: '', serialNumber: '',
   invoiceNumber: '', purchaseDate: '', purchaseValue: '', warrantyUntil: '', department: '', locationId: '',

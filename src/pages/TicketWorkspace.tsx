@@ -17,6 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { AccountMenu } from '@/components/AccountMenu';
+import { AppHeader } from '@/components/AppHeader';
 import { 
   ArrowLeft, 
   Send, 
@@ -505,21 +506,9 @@ export default function TicketWorkspace() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      {/* HEADER */}
-      <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur">
-        <div className="container flex h-16 items-center gap-4">
-          <Link to="/dashboard"><Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button></Link>
-          <div className="flex-1">
-             <div className="flex items-center gap-2">
-                <span className="font-mono text-sm text-muted-foreground">{ticket.protocolo}</span>
-             </div>
-             <h1 className="truncate text-lg font-semibold">{ticket.titulo}</h1>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Menu Mobile */}
-            <Sheet>
+      <AppHeader title={ticket.titulo} subtitle={ticket.protocolo} badge="Atendimento" actions={<Sheet>
               <SheetTrigger asChild>
-                <Button variant="outline" size="icon" className="md:hidden">
+                <Button variant="outline" size="icon" className="h-9 w-9 md:hidden">
                   <Settings2 className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
@@ -550,13 +539,7 @@ export default function TicketWorkspace() {
                 </div>
                  </div>
               </SheetContent>
-            </Sheet>
-            <ThemeToggle />
-            <NotificationBell />
-            <AccountMenu />
-          </div>
-        </div>
-      </header>
+            </Sheet>} />
 
       <main className="container flex flex-1 gap-4 py-4 h-[calc(100vh-4rem)]">
         {/* ÁREA PRINCIPAL (Esquerda) */}

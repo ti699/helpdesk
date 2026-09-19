@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Loader2, MapPin, PackageCheck, Plus, Tags } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { useToast } from '@/hooks/use-toast';
 import { AssetHeader } from '@/components/assets/AssetHeader';
 import { Button } from '@/components/ui/button';
@@ -9,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { AssetCategory, AssetLocation, AssetStatus } from '@/types/assets';
 
-const db = supabase as any;
+const db = supabase as unknown as SupabaseClient;
 
 export default function AssetSettings() {
   const { toast } = useToast();

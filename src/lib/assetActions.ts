@@ -66,8 +66,51 @@ export const approveAssetMovement = (movementId: string) =>
 export const cancelAssetMovement = (movementId: string) =>
   invoke<{ movement: Record<string, unknown> }>('cancel_movement', { movementId });
 
-export const importAssets = (fileName: string, rows: Record<string, unknown>[]) =>
-  invoke<{ jobId: string; total: number; imported: number; errors: Array<{ row_number: number; message: string }> }>('import_assets', { fileName, rows });
+export interface ImportReferenceOption {
+  id: string;
+  name: string;
+  color?: string;
+  is_terminal?: boolean;
+}
+
+export interface ImportUnknownReference { key: string; name: string }
+
+export interface AssetImportValidation {
+  jobId: string;
+  total: number;
+  valid: number;
+  errors: number;
+  warnings: number;
+  preview: Array<{
+    row_number: number;
+    normalized_data: Record<string, unknown>;
+    errors: string[];
+    warnings: string[];
+    row_status: 'valid' | 'warning' | 'error';
+  }>;
+  unknown: Record<'categories' | 'statuses' | 'locations', ImportUnknownReference[]>;
+  options: Record<'categories' | 'statuses' | 'locations', ImportReferenceOption[]>;
+}
+
+export interface ImportResolution {
+  mode: 'existing' | 'create';
+  id?: string;
+  name?: string;
+  color?: string;
+  is_terminal?: boolean;
+}
+
+export type AssetImportResolutions = Record<'categories' | 'statuses' | 'locations', Record<string, ImportResolution>>;
+
+export const validateAssetImport = (
+  fileName: string,
+  sourceSheet: string | null,
+  columnMapping: Record<string, string>,
+  rows: Record<string, unknown>[],
+) => invoke<AssetImportValidation>('validate_import', { fileName, sourceSheet, columnMapping, rows });
+
+export const commitAssetImport = (jobId: string, resolutions: AssetImportResolutions) =>
+  invoke<{ jobId: string; total: number; imported: number }>('commit_import', { jobId, resolutions });
 
 export const createAssetTerm = (assetId: string, documentType: string, movementId?: string) =>
   invoke<{ term: Record<string, unknown> }>('create_term', { assetId, documentType, movementId });

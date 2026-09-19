@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { AppHeader } from '@/components/AppHeader';
 import { 
   Select, 
   SelectContent, 
@@ -369,21 +370,7 @@ export default function NovoTicket() {
     }
   };
 
-  const renderHeader = () => (
-    <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur">
-      <div className="container flex h-16 items-center gap-2 sm:gap-4 px-3 sm:px-4">
-        <Link to="/">
-          <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10">
-            <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
-          </Button>
-        </Link>
-        <div className="min-w-0">
-          <h1 className="text-base sm:text-lg font-semibold truncate">Nova Solicitação</h1>
-          <p className="text-xs text-muted-foreground">Descreva seu problema</p>
-        </div>
-      </div>
-    </header>
-  );
+  const renderHeader = () => <AppHeader title="Nova Solicitação" subtitle="Descreva seu problema" />;
 
   if (checkingPendingFeedback) {
     return (

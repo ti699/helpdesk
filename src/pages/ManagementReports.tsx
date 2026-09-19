@@ -13,6 +13,7 @@ import { RankingBlock } from '@/components/reports/RankingBlock';
 import { SlimMetricCard } from '@/components/reports/SlimMetricCard';
 import { StatusMultiSelect } from '@/components/reports/StatusMultiSelect';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { AppHeader } from '@/components/AppHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -993,39 +994,7 @@ export default function ManagementReports() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
-        <div className="container flex h-16 items-center justify-between px-3 sm:px-4">
-          <div className="flex min-w-0 items-center gap-2 sm:gap-4">
-            <Link to="/gestao">
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-            </Link>
-            <img
-              src="/lovable-uploads/8bb8e15f-a27f-4dfe-b08a-7d5ce03cff09.png"
-              alt="Grupo Astrotur"
-              className="h-8 object-contain sm:h-10"
-            />
-            <div className="hidden sm:block">
-              <h1 className="text-lg font-semibold">Relatório Alta Gestão</h1>
-              <p className="text-xs text-muted-foreground">Prévia executiva antes da exportação</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="hidden sm:flex bg-primary/10 text-primary border-primary/20">
-              {role === 'admin' ? 'Administrador' : 'Alta Gestão'}
-            </Badge>
-            <Button size="sm" onClick={exportPDF} disabled={!periodValidation.valid || loading}>
-              <Download className="mr-2 h-4 w-4" />
-              Exportar PDF
-            </Button>
-            <ThemeToggle />
-            <NotificationBell />
-            <AccountMenu />
-          </div>
-        </div>
-      </header>
+      <AppHeader title="Relatório Alta Gestão" subtitle="Prévia executiva antes da exportação" badge={role === 'admin' ? 'Administrador' : 'Alta Gestão'} actions={<Button size="sm" onClick={exportPDF} disabled={!periodValidation.valid || loading}><Download className="mr-2 h-4 w-4" />Exportar PDF</Button>} />
 
       <main className="container space-y-4 px-3 py-3 sm:px-4 sm:py-4">
         <Card>

@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { AppHeader } from '@/components/AppHeader';
 
 type TicketStatus = 'aberto' | 'em_andamento' | 'aguardando_resposta' | 'resolvido' | 'fechado';
 type TicketType = 'TI' | 'Manutenção predial';
@@ -374,39 +375,12 @@ export default function ExecutiveDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
-        <div className="container flex h-16 items-center justify-between px-3 sm:px-4">
-          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-            <Link to="/dashboard">
-              <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10">
-                <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
-              </Button>
-            </Link>
-            <img
-              src="/lovable-uploads/8bb8e15f-a27f-4dfe-b08a-7d5ce03cff09.png"
-              alt="Grupo Astrotur"
-              className="h-8 sm:h-10 object-contain"
-            />
-            <div className="hidden sm:block min-w-0">
-              <h1 className="text-sm sm:text-lg font-semibold truncate">Alta Gestão</h1>
-              <p className="text-xs text-muted-foreground">Indicadores executivos de suporte</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1 sm:gap-3">
-            <Badge variant="outline" className="hidden sm:flex bg-primary/10 text-primary border-primary/20">
-              {role === 'admin' ? 'Administrador' : 'Alta Gestão'}
-            </Badge>
-            <Button variant="outline" size="sm" onClick={handleGenerateReport} disabled={!periodValidation.valid} className="hidden sm:flex">
-              <FileText className="mr-2 h-4 w-4" />
-              Gerar Relatório
-            </Button>
-            <ThemeToggle />
-            <NotificationBell />
-            <AccountMenu />
-          </div>
-        </div>
-      </header>
+      <AppHeader
+        title="Alta Gestão"
+        subtitle="Indicadores executivos de suporte"
+        badge={role === 'admin' ? 'Administrador' : 'Alta Gestão'}
+        actions={<Button variant="outline" size="sm" onClick={handleGenerateReport} disabled={!periodValidation.valid} className="hidden sm:flex"><FileText className="mr-2 h-4 w-4" />Gerar Relatório</Button>}
+      />
 
       <main className="container px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
         <Card>

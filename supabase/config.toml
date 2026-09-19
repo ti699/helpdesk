@@ -11,3 +11,6 @@ verify_jwt = true
 
 [functions.asset-actions]
 verify_jwt = true
+
+[functions.client-diagnostics]
+verify_jwt = true
