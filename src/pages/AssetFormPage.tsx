@@ -1,8 +1,9 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Loader2, Save } from 'lucide-react';
+import { Clock3, Loader2, Save, Trash2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { AssetHeader } from '@/components/assets/AssetHeader';
 import { Button } from '@/components/ui/button';
@@ -21,8 +22,18 @@ const emptyForm = {
   responsibleUserId: '', responsibleName: '', statusId: '', notes: '',
 };
 
+type AssetFormState = typeof emptyForm;
+
+interface AssetFormDraft {
+  version: 1;
+  form: AssetFormState;
+  responsibleMode: string;
+  savedAt: string;
+}
+
 export default function AssetFormPage() {
   const { id } = useParams();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const editing = !!id;
@@ -34,8 +45,26 @@ export default function AssetFormPage() {
   const [responsibleMode, setResponsibleMode] = useState('manual');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const baselineFormRef = useRef<AssetFormState>(emptyForm);
+  const baselineResponsibleModeRef = useRef('manual');
+  const draftKey = useMemo(
+    () => user ? `helpdesk:asset-draft:${user.id}:${id || 'new'}` : null,
+    [id, user],
+  );
+
+  const isDirty = useMemo(
+    () => JSON.stringify(form) !== JSON.stringify(baselineFormRef.current)
+      || responsibleMode !== baselineResponsibleModeRef.current,
+    [form, responsibleMode],
+  );
 
   useEffect(() => {
+    setDraftReady(false);
+    setDraftRestored(false);
+
     const load = async () => {
       try {
         const [categoriesResult, statusesResult, locationsResult, profilesResult, assetResult] = await Promise.all([
@@ -52,29 +81,80 @@ export default function AssetFormPage() {
         setStatuses(statusesResult.data || []);
         setLocations(locationsResult.data || []);
         setProfiles(profilesResult.data || []);
+        let initialForm: AssetFormState;
+        let initialResponsibleMode = 'manual';
+
         if (assetResult.data) {
           const asset = assetResult.data as AssetRecord;
-          setForm({
+          initialForm = {
             assetCode: asset.asset_code || '', name: asset.name || '', description: asset.description || '', categoryId: asset.category_id || '',
             brand: asset.brand || '', model: asset.model || '', serialNumber: asset.serial_number || '', invoiceNumber: asset.invoice_number || '',
             purchaseDate: asset.purchase_date || '', purchaseValue: asset.purchase_value?.toString() || '', warrantyUntil: asset.warranty_until || '',
             department: asset.department || '', locationId: asset.location_id || '', responsibleUserId: asset.responsible_user_id || '',
             responsibleName: asset.responsible_name || '', statusId: asset.status_id || '', notes: asset.notes || '',
-          });
-          setResponsibleMode(asset.responsible_user_id || 'manual');
+          };
+          initialResponsibleMode = asset.responsible_user_id || 'manual';
         } else {
           const defaultStatus = (statusesResult.data || []).find((item: AssetStatus) => item.is_default);
-          setForm((current) => ({ ...current, statusId: defaultStatus?.id || '' }));
+          initialForm = { ...emptyForm, statusId: defaultStatus?.id || '' };
+        }
+
+        baselineFormRef.current = initialForm;
+        baselineResponsibleModeRef.current = initialResponsibleMode;
+
+        let restoredDraft: AssetFormDraft | null = null;
+        if (draftKey) {
+          try {
+            const storedDraft = localStorage.getItem(draftKey);
+            const parsedDraft = storedDraft ? JSON.parse(storedDraft) as AssetFormDraft : null;
+            if (parsedDraft?.version === 1 && parsedDraft.form && typeof parsedDraft.savedAt === 'string') {
+              restoredDraft = parsedDraft;
+            }
+          } catch (error) {
+            console.warn('Invalid asset draft removed:', error);
+            localStorage.removeItem(draftKey);
+          }
+        }
+
+        if (restoredDraft) {
+          setForm({ ...initialForm, ...restoredDraft.form });
+          setResponsibleMode(restoredDraft.responsibleMode || initialResponsibleMode);
+          setDraftSavedAt(restoredDraft.savedAt);
+          setDraftRestored(true);
+        } else {
+          setForm(initialForm);
+          setResponsibleMode(initialResponsibleMode);
         }
       } catch (error) {
         console.error('Error loading asset form:', error);
         toast({ title: 'Erro', description: 'Não foi possível preparar o cadastro.', variant: 'destructive' });
       } finally {
         setLoading(false);
+        setDraftReady(true);
       }
     };
     load();
-  }, [id, toast]);
+  }, [draftKey, id, toast]);
+
+  useEffect(() => {
+    if (!draftReady || !draftKey) return;
+
+    if (!isDirty) {
+      localStorage.removeItem(draftKey);
+      setDraftSavedAt(null);
+      return;
+    }
+
+    const savedAt = new Date().toISOString();
+    const draft: AssetFormDraft = {
+      version: 1,
+      form,
+      responsibleMode,
+      savedAt,
+    };
+    localStorage.setItem(draftKey, JSON.stringify(draft));
+    setDraftSavedAt(savedAt);
+  }, [draftKey, draftReady, form, isDirty, responsibleMode]);
 
   const setValue = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
 
@@ -88,6 +168,15 @@ export default function AssetFormPage() {
     setForm((current) => ({ ...current, responsibleUserId: value, responsibleName: selected?.nome || '', department: current.department || selected?.setor || '' }));
   };
 
+  const discardDraft = () => {
+    if (draftKey) localStorage.removeItem(draftKey);
+    setForm(baselineFormRef.current);
+    setResponsibleMode(baselineResponsibleModeRef.current);
+    setDraftSavedAt(null);
+    setDraftRestored(false);
+    toast({ title: 'Rascunho descartado', description: 'O formulário voltou aos dados originais.' });
+  };
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     if (!form.assetCode.trim() || !form.name.trim()) {
@@ -97,6 +186,8 @@ export default function AssetFormPage() {
     setSaving(true);
     try {
       const result = editing && id ? await updateAsset(id, form) : await createAsset(form);
+      if (draftKey) localStorage.removeItem(draftKey);
+      setDraftSavedAt(null);
       toast({ title: editing ? 'Patrimônio atualizado' : 'Patrimônio cadastrado', description: `Código ${result.asset.asset_code}` });
       navigate(`/patrimonio/${result.asset.id}`);
     } catch (error) {
@@ -115,6 +206,21 @@ export default function AssetFormPage() {
           <CardContent>
             {loading ? <div className="flex h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div> : (
               <form onSubmit={handleSubmit} className="space-y-6">
+                {(draftRestored || draftSavedAt) && (
+                  <div className="flex flex-col gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-950 sm:flex-row sm:items-center sm:justify-between dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-100">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Clock3 className="h-4 w-4 flex-shrink-0" />
+                      <span>
+                        {draftRestored ? 'Rascunho recuperado' : 'Rascunho salvo automaticamente'}
+                        {draftSavedAt && ` às ${new Date(draftSavedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}.
+                      </span>
+                    </div>
+                    <Button type="button" variant="ghost" size="sm" onClick={discardDraft} className="h-8 justify-start text-blue-950 hover:bg-blue-100 hover:text-blue-950 dark:text-blue-100 dark:hover:bg-blue-900">
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Descartar rascunho
+                    </Button>
+                  </div>
+                )}
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   <div className="space-y-2"><Label htmlFor="assetCode">Número do patrimônio *</Label><Input id="assetCode" value={form.assetCode} onChange={(e) => setValue('assetCode', e.target.value)} maxLength={80} /></div>
                   <div className="space-y-2 md:col-span-1 lg:col-span-2"><Label htmlFor="name">Nome do bem *</Label><Input id="name" value={form.name} onChange={(e) => setValue('name', e.target.value)} maxLength={160} /></div>
@@ -134,7 +240,10 @@ export default function AssetFormPage() {
                   <div className="space-y-2 md:col-span-2 lg:col-span-3"><Label htmlFor="description">Descrição</Label><Textarea id="description" value={form.description} onChange={(e) => setValue('description', e.target.value)} rows={3} /></div>
                   <div className="space-y-2 md:col-span-2 lg:col-span-3"><Label htmlFor="notes">Observações</Label><Textarea id="notes" value={form.notes} onChange={(e) => setValue('notes', e.target.value)} rows={3} /></div>
                 </div>
-                <div className="flex justify-end gap-2 border-t pt-4"><Button type="button" variant="outline" onClick={() => navigate(-1)}>Cancelar</Button><Button type="submit" disabled={saving}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Salvar</Button></div>
+                <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-muted-foreground">Você pode sair desta página: as alterações não salvas ficam guardadas neste navegador.</p>
+                  <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => navigate(-1)}>Sair</Button><Button type="submit" disabled={saving}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Salvar</Button></div>
+                </div>
               </form>
             )}
           </CardContent>
