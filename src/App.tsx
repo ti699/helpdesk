@@ -11,6 +11,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
+import SSO from "./pages/SSO";
 import NovoTicket from "./pages/NovoTicket";
 import TicketDetail from "./pages/TicketDetail";
 import Dashboard from "./pages/Dashboard";
@@ -39,95 +40,96 @@ const App = () => (
           <Toaster />
           <Sonner />
           <AppErrorBoundary>
-          <BrowserRouter>
-            <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-background"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
-            <Routes>
-              <Route path="/auth" element={<Auth />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
-              <Route
-                path="/"
-                element={
-                  <ProtectedRoute>
-                    <Index />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/novo-ticket"
-                element={
-                  <ProtectedRoute allowedRoles={['solicitante', 'agente_ti', 'agente_manutencao', 'admin']}>
-                    <NovoTicket />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/ticket/:id"
-                element={
-                  <ProtectedRoute>
-                    <TicketDetail />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/dashboard"
-                element={
-                  <ProtectedRoute allowedRoles={['agente_ti', 'agente_manutencao', 'admin']}>
-                    <Dashboard />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/gestao"
-                element={
-                  <ProtectedRoute>
-                    <ExecutiveDashboard />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/relatorios/tickets"
-                element={
-                  <ProtectedRoute>
-                    <TicketReports />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/relatorios/gestao"
-                element={
-                  <ProtectedRoute>
-                    <ManagementReports />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/workspace/:id"
-                element={
-                  <ProtectedRoute allowedRoles={['agente_ti', 'agente_manutencao', 'admin']}>
-                    <TicketWorkspace />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/admin"
-                element={
-                  <ProtectedRoute allowedRoles={['admin']}>
-                    <Admin />
-                  </ProtectedRoute>
-                }
-              />
-              <Route path="/patrimonio" element={<ProtectedRoute requireAssetAccess><AssetsDashboard /></ProtectedRoute>} />
-              <Route path="/patrimonio/novo" element={<ProtectedRoute requireAssetAccess><AssetFormPage /></ProtectedRoute>} />
-              <Route path="/patrimonio/importar" element={<ProtectedRoute requireAssetAccess><AssetImport /></ProtectedRoute>} />
-              <Route path="/patrimonio/movimentacoes" element={<ProtectedRoute requireAssetAccess><AssetMovements /></ProtectedRoute>} />
-              <Route path="/patrimonio/configuracoes" element={<ProtectedRoute requireAssetAccess><AssetSettings /></ProtectedRoute>} />
-              <Route path="/patrimonio/:id" element={<ProtectedRoute requireAssetAccess><AssetDetail /></ProtectedRoute>} />
-              <Route path="/patrimonio/:id/editar" element={<ProtectedRoute requireAssetAccess><AssetFormPage /></ProtectedRoute>} />
-              <Route path="/relatorios/patrimonio" element={<ProtectedRoute requireAssetAccess><AssetReports /></ProtectedRoute>} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-            </Suspense>
-          </BrowserRouter>
+            <BrowserRouter>
+              <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-background"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+                <Routes>
+                  <Route path="/sso" element={<SSO />} />
+                  <Route path="/auth" element={<Auth />} />
+                  <Route path="/reset-password" element={<ResetPassword />} />
+                  <Route
+                    path="/"
+                    element={
+                      <ProtectedRoute>
+                        <Index />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/novo-ticket"
+                    element={
+                      <ProtectedRoute allowedRoles={['solicitante', 'agente_ti', 'agente_manutencao', 'admin']}>
+                        <NovoTicket />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/ticket/:id"
+                    element={
+                      <ProtectedRoute>
+                        <TicketDetail />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/dashboard"
+                    element={
+                      <ProtectedRoute allowedRoles={['agente_ti', 'agente_manutencao', 'admin']}>
+                        <Dashboard />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/gestao"
+                    element={
+                      <ProtectedRoute>
+                        <ExecutiveDashboard />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/relatorios/tickets"
+                    element={
+                      <ProtectedRoute>
+                        <TicketReports />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/relatorios/gestao"
+                    element={
+                      <ProtectedRoute>
+                        <ManagementReports />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/workspace/:id"
+                    element={
+                      <ProtectedRoute allowedRoles={['agente_ti', 'agente_manutencao', 'admin']}>
+                        <TicketWorkspace />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin"
+                    element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <Admin />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route path="/patrimonio" element={<ProtectedRoute requireAssetAccess><AssetsDashboard /></ProtectedRoute>} />
+                  <Route path="/patrimonio/novo" element={<ProtectedRoute requireAssetAccess><AssetFormPage /></ProtectedRoute>} />
+                  <Route path="/patrimonio/importar" element={<ProtectedRoute requireAssetAccess><AssetImport /></ProtectedRoute>} />
+                  <Route path="/patrimonio/movimentacoes" element={<ProtectedRoute requireAssetAccess><AssetMovements /></ProtectedRoute>} />
+                  <Route path="/patrimonio/configuracoes" element={<ProtectedRoute requireAssetAccess><AssetSettings /></ProtectedRoute>} />
+                  <Route path="/patrimonio/:id" element={<ProtectedRoute requireAssetAccess><AssetDetail /></ProtectedRoute>} />
+                  <Route path="/patrimonio/:id/editar" element={<ProtectedRoute requireAssetAccess><AssetFormPage /></ProtectedRoute>} />
+                  <Route path="/relatorios/patrimonio" element={<ProtectedRoute requireAssetAccess><AssetReports /></ProtectedRoute>} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Suspense>
+            </BrowserRouter>
           </AppErrorBoundary>
         </TooltipProvider>
       </AuthProvider>
