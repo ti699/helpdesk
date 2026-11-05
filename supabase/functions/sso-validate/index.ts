@@ -19,8 +19,12 @@ serve(async (request) => {
       });
     }
 
-    const hubUrl = (Deno.env.get("SSO_HUB_URL") || "").replace(/\/+$/, "");
-    const clientSecret = Deno.env.get("SSO_CLIENT_SECRET") || "";
+    const hubUrl = (Deno.env.get("SSO_HUB_URL") || "").trim().replace(/\/+$/, "");
+    const clientSecret = (Deno.env.get("SSO_CLIENT_SECRET") || "").trim();
+
+    // Log de diagnóstico no Dashboard do Supabase
+    console.log(`[DEBUG SSO] Secret lida: "${clientSecret.substring(0, 8)}..." | Tamanho: ${clientSecret.length}`);
+
     if (!hubUrl || !clientSecret) {
       return new Response(JSON.stringify({ valid: false, message: "Integração SSO não configurada." }), {
         status: 500,
@@ -43,12 +47,13 @@ serve(async (request) => {
       body: JSON.stringify({
         ticket,
         client_secret: clientSecret,
-        clientSecret,
       }),
       signal: AbortSignal.timeout(15_000),
     });
 
     const hubData = await response.json().catch(() => null);
+    console.log(`[DEBUG SSO] Resposta do Hub (HTTP ${response.status}):`, JSON.stringify(hubData));
+
     if (!response.ok || hubData?.valid !== true) {
       const message = hubData?.message || "Credenciais inválidas.";
       return new Response(JSON.stringify({ valid: false, message }), {
