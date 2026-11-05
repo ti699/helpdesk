@@ -21,26 +21,41 @@ export default function SSO() {
 
     setStatus("Validando ticket no Hub...");
 
-    supabase.functions.invoke("sso-validate", { body: { ticket } })
+    supabase.functions
+      .invoke("sso-validate", { body: { ticket } })
       .then(async ({ data, error }) => {
-        if (error) throw error;
+        if (error) {
+          // Extrai mensagem de erro customizada enviada no corpo da resposta da Edge Function
+          let msg = error.message;
+          try {
+            const body = await error.context?.json();
+            if (body?.message) msg = body.message;
+          } catch (_) {
+            // Mantém a mensagem original caso falhe a conversão do JSON
+          }
+          throw new Error(msg);
+        }
+
         if (!data?.valid || !data?.token_hash || !data?.email) {
           throw new Error(data?.message || "Resposta inválida da API do Hub.");
         }
 
         setStatus("Sucesso! Autenticando sessão...");
+
+        // Tipo corrigido para "magiclink" correspondendo ao gerado pela Edge Function
         const { error: otpError } = await supabase.auth.verifyOtp({
           email: data.email,
           token_hash: data.token_hash,
-          type: "email",
+          type: "magiclink",
         });
+
         if (otpError) throw otpError;
 
         window.location.replace("/");
       })
       .catch((err) => {
         setStatus("Falha na validação do SSO.");
-        setErrorDetails(err.message);
+        setErrorDetails(err.message || "Erro desconhecido ao validar ticket.");
       });
   }, [searchParams]);
 
