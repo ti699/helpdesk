@@ -44,7 +44,6 @@ export default function SSO() {
 
         // Tipo corrigido para "magiclink" correspondendo ao gerado pela Edge Function
         const { error: otpError } = await supabase.auth.verifyOtp({
-          email: data.email,
           token_hash: data.token_hash,
           type: "magiclink",
         });
