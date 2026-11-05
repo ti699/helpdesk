@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function SSO() {
   const [searchParams] = useSearchParams();
@@ -9,8 +10,6 @@ export default function SSO() {
 
   useEffect(() => {
     const ticket = searchParams.get("ticket");
-    const hubApiUrl = "http://187.127.0.219:8080";
-    const clientSecret = "fe8a1afe90b17ef73209db7e69c181215996958b567be7751f7d53d59c567086";
 
     if (!ticket) {
       setStatus("Erro: Nenhum ticket encontrado na URL.");
@@ -22,46 +21,22 @@ export default function SSO() {
 
     setStatus("Validando ticket no Hub...");
 
-    fetch(`${hubApiUrl}/api/sso/validate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ticket,
-        client_secret: clientSecret,
-        clientSecret: clientSecret
-      }),
-    })
-      .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        console.log("Resposta do Hub:", res.status, data);
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}: ${JSON.stringify(data)}`);
+    supabase.functions.invoke("sso-validate", { body: { ticket } })
+      .then(async ({ data, error }) => {
+        if (error) throw error;
+        if (!data?.valid || !data?.token_hash || !data?.email) {
+          throw new Error(data?.message || "Resposta inválida da API do Hub.");
         }
-        return data;
-      })
-      .then((data) => {
-        if (data.valid && (data.user || data.success !== false)) {
-          setStatus("Sucesso! Autenticando sessão...");
-          const token = data.token || data.access_token || "sso-session-token";
 
-          window.localStorage.setItem("token", token);
-          window.localStorage.setItem("user", JSON.stringify(data.user || {}));
-          window.localStorage.setItem("sb-access-token", token);
-          window.localStorage.setItem("supabase.auth.token", JSON.stringify({
-            currentSession: {
-              access_token: token,
-              user: data.user || {}
-            },
-            expiresAt: Math.floor(Date.now() / 1000) + 3600 * 24
-          }));
+        setStatus("Sucesso! Autenticando sessão...");
+        const { error: otpError } = await supabase.auth.verifyOtp({
+          email: data.email,
+          token_hash: data.token_hash,
+          type: "email",
+        });
+        if (otpError) throw otpError;
 
-          setTimeout(() => {
-            window.location.href = "/";
-          }, 500);
-        } else {
-          setStatus("Erro: Resposta inválida da API do Hub.");
-          setErrorDetails(JSON.stringify(data));
-        }
+        window.location.replace("/");
       })
       .catch((err) => {
         setStatus("Falha na validação do SSO.");
