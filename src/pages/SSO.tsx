@@ -25,24 +25,20 @@ export default function SSO() {
       .invoke("sso-validate", { body: { ticket } })
       .then(async ({ data, error }) => {
         if (error) {
-          // Extrai mensagem de erro customizada enviada no corpo da resposta da Edge Function
           let msg = error.message;
           try {
             const body = await error.context?.json();
             if (body?.message) msg = body.message;
-          } catch (_) {
-            // Mantém a mensagem original caso falhe a conversão do JSON
-          }
-          throw new Error(msg);
+          } catch (_) {}
+          throw new Error(`Falha no sso-validate: ${msg}`);
         }
 
-        if (!data?.valid || !data?.token_hash || !data?.email) {
-          throw new Error(data?.message || "Resposta inválida da API do Hub.");
+        if (!data?.valid || !data?.token_hash) {
+          throw new Error(data?.message || "Resposta inválida recebida da validação.");
         }
 
         setStatus("Sucesso! Autenticando sessão...");
 
-        // Tipo corrigido para "magiclink" correspondendo ao gerado pela Edge Function
         const { error: otpError } = await supabase.auth.verifyOtp({
           token_hash: data.token_hash,
           type: "magiclink",
