@@ -22,9 +22,6 @@ serve(async (request) => {
     const hubUrl = (Deno.env.get("SSO_HUB_URL") || "").trim().replace(/\/+$/, "");
     const clientSecret = (Deno.env.get("SSO_CLIENT_SECRET") || "").trim();
 
-    // Log de diagnóstico no Dashboard do Supabase
-    console.log(`[DEBUG SSO] Secret lida: "${clientSecret.substring(0, 8)}..." | Tamanho: ${clientSecret.length}`);
-
     if (!hubUrl || !clientSecret) {
       return new Response(JSON.stringify({ valid: false, message: "Integração SSO não configurada." }), {
         status: 500,
@@ -52,7 +49,6 @@ serve(async (request) => {
     });
 
     const hubData = await response.json().catch(() => null);
-    console.log(`[DEBUG SSO] Resposta do Hub (HTTP ${response.status}):`, JSON.stringify(hubData));
 
     if (!response.ok || hubData?.valid !== true) {
       const message = hubData?.message || "Credenciais inválidas.";
@@ -75,16 +71,21 @@ serve(async (request) => {
     const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
     const admin = createClient(supabaseUrl, serviceRole);
 
+    // Permite criar o usuário no Supabase Auth caso ele ainda não exista no HelpDesk
     const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
       type: "magiclink",
       email,
-      options: { shouldCreateUser: false },
+      options: { 
+        shouldCreateUser: true,
+        data: { name: user.name || user.nome || "" }
+      },
     });
+
     if (linkError || !linkData?.properties?.hashed_token) {
       console.error("Falha ao gerar sessão Supabase:", linkError?.message);
       return new Response(JSON.stringify({
         valid: false,
-        message: "Usuário não autorizado ou ausente no Help Desk.",
+        message: linkError?.message || "Falha ao gerar o token de acesso no HelpDesk.",
       }), {
         status: 403,
         headers: { "Content-Type": "application/json", ...corsHeaders },

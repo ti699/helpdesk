@@ -1,6 +1,13 @@
 {
+  "framework": "vite",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ],
   "headers": [
     {
@@ -11,16 +18,16 @@
           "value": "nosniff"
         },
         {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        },
+        {
           "key": "Referrer-Policy",
           "value": "strict-origin-when-cross-origin"
         },
         {
-          "key": "Permissions-Policy",
-          "value": "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
-        },
-        {
-          "key": "X-Frame-Options",
-          "value": "DENY"
+          "key": "Content-Security-Policy",
+          "value": "frame-ancestors 'self' http://187.127.0.219:8080;"
         }
       ]
     }
