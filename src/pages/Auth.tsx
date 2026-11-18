@@ -10,15 +10,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Mail, Lock, User, Phone, Building, Briefcase } from 'lucide-react';
 import { z } from 'zod';
+import { CORPORATE_EMAIL_ERROR, isCorporateEmail } from '@/lib/corporateEmail';
 
+const corporateEmailSchema = z.string().email('Email inválido').refine(isCorporateEmail, CORPORATE_EMAIL_ERROR);
 const loginSchema = z.object({
-  email: z.string().email('Email inválido'),
+  email: corporateEmailSchema,
   password: z.string().min(6, 'Senha deve ter no mínimo 6 caracteres'),
 });
 
 const signupSchema = z.object({
   nome: z.string().min(2, 'Nome deve ter no mínimo 2 caracteres'),
-  email: z.string().email('Email inválido'),
+  email: z.string().email('Email inválido').refine(isCorporateEmail, 'Email inválido'),
   password: z.string().min(6, 'Senha deve ter no mínimo 6 caracteres'),
   telefone: z.string().optional(),
   funcao: z.string().optional(),
@@ -206,6 +208,16 @@ export default function Auth() {
       toast({
         title: 'Email obrigatório',
         description: 'Digite seu email para recuperar a senha.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const emailValidation = corporateEmailSchema.safeParse(resetEmail);
+    if (!emailValidation.success) {
+      toast({
+        title: 'Erro de validação',
+        description: emailValidation.error.errors[0].message,
         variant: 'destructive',
       });
       return;

@@ -23,6 +23,7 @@ import {
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { z } from 'zod';
+import { CORPORATE_EMAIL_ERROR, isCorporateEmail } from '@/lib/corporateEmail';
 
 interface Invitation {
   id: string;
@@ -46,7 +47,7 @@ const roleColors: Record<string, string> = {
   admin: 'bg-primary/10 text-primary',
 };
 
-const emailSchema = z.string().email('Email inválido');
+const emailSchema = z.string().email('Email inválido').refine(isCorporateEmail, CORPORATE_EMAIL_ERROR);
 
 export function InvitationManagement() {
   const { user } = useAuth();
@@ -86,20 +87,20 @@ export function InvitationManagement() {
   const handleCreateInvitation = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    try {
-      emailSchema.parse(newEmail);
-    } catch {
+    const emailValidation = emailSchema.safeParse(newEmail);
+    if (!emailValidation.success) {
       toast({
         title: 'Erro',
-        description: 'Por favor, insira um email válido',
+        description: emailValidation.error.errors[0].message,
         variant: 'destructive',
       });
       return;
     }
 
     // Check if email already has a pending invitation
+    const normalizedEmail = newEmail.trim().toLowerCase();
     const existingInvitation = invitations.find(
-      (inv) => inv.email === newEmail && !inv.used && new Date(inv.expires_at) > new Date()
+      (inv) => inv.email.toLowerCase() === normalizedEmail && !inv.used && new Date(inv.expires_at) > new Date()
     );
 
     if (existingInvitation) {
@@ -117,7 +118,7 @@ export function InvitationManagement() {
       const { data, error } = await supabase
         .from('invitations')
         .insert({
-          email: newEmail.toLowerCase().trim(),
+          email: normalizedEmail,
           role: newRole,
           invited_by: user?.id,
         })
@@ -219,7 +220,7 @@ export function InvitationManagement() {
               <Input
                 id="email"
                 type="email"
-                placeholder="email@exemplo.com"
+                placeholder="nome@astroturviagens.com"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
                 required

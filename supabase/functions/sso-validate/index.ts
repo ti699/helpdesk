@@ -6,6 +6,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const CORPORATE_EMAIL_DOMAINS = [
+  "astroturviagens.com",
+  "grupoastrotur.com.br",
+  "transastro.com.br",
+];
+
 serve(async (request) => {
   if (request.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -63,6 +69,16 @@ serve(async (request) => {
     if (!email) {
       return new Response(JSON.stringify({ valid: false, message: "O Hub não retornou o email do usuário." }), {
         status: 422,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    if (!CORPORATE_EMAIL_DOMAINS.some((domain) => email.endsWith(`@${domain}`))) {
+      return new Response(JSON.stringify({
+        valid: false,
+        message: "Acesso permitido somente com e-mail corporativo (@astroturviagens.com, @grupoastrotur.com.br ou @transastro.com.br).",
+      }), {
+        status: 403,
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }
