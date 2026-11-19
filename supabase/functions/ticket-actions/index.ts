@@ -672,6 +672,7 @@ const handleUpdateStatus = async (
 
   const updatePayload: {
     status: TicketStatus;
+    agente_id?: string | null;
     closed_at: string | null;
     resolved_at: string | null;
     service_started_at?: string | null;
@@ -681,6 +682,10 @@ const handleUpdateStatus = async (
     closed_at: newStatus === "fechado" ? nowIso : null,
     resolved_at: null,
   };
+
+  if (["em_andamento", "resolvido", "fechado"].includes(newStatus)) {
+    updatePayload.agente_id = currentTicket.agente_id || context.user.id;
+  }
 
   if (newStatus === "em_andamento") {
     updatePayload.service_finished_at = null;
@@ -736,13 +741,8 @@ const handleUpdateStatus = async (
       sendEmails("ticket_activity", ticketPayload, departmentRecipients),
     ]);
   } else if (newStatus === "fechado") {
-    const alreadyEvaluated = await hasTicketFeedback(ticket.id);
     await Promise.all([
-      sendEmails(
-        alreadyEvaluated ? "ticket_closed" : "feedback_request",
-        ticketPayload,
-        requesterRecipient(requester),
-      ),
+      sendEmails("ticket_closed", ticketPayload, requesterRecipient(requester)),
       sendEmails("ticket_closed", ticketPayload, departmentRecipients),
     ]);
   } else {
@@ -918,6 +918,7 @@ const handleFinishService = async (
     .from("tickets")
     .update({
       status: "resolvido",
+      agente_id: ticket.agente_id || context.user.id,
       resolved_at: finishedAt,
       service_started_at: ticket.service_started_at || session.started_at,
       service_finished_at: finishedAt,
@@ -983,6 +984,111 @@ const handleFinishService = async (
   };
 };
 
+const handleSubmitFeedback = async (
+  payload: Record<string, unknown>,
+  context: Awaited<ReturnType<typeof getUserAndRole>>,
+) => {
+  const ticketId = String(payload.ticketId || "");
+  const rating = payload.rating;
+  const comment = typeof payload.comment === "string" ? payload.comment.trim() : "";
+
+  if (!ticketId || typeof rating !== "number" || !Number.isInteger(rating) || rating < 1 || rating > 5) {
+    throw new HttpError(400, "Ticket e nota de avaliação válida são obrigatórios");
+  }
+
+  const ticket = await getTicket(ticketId);
+  if (ticket.solicitante_id !== context.user.id) {
+    throw new HttpError(403, "Somente o solicitante pode avaliar este ticket");
+  }
+
+  const { data: existingFeedback, error: feedbackLookupError } = await admin
+    .from("feedbacks")
+    .select("id, avaliador_id")
+    .eq("ticket_id", ticketId)
+    .maybeSingle();
+
+  if (feedbackLookupError) {
+    throw new HttpError(400, feedbackLookupError.message);
+  }
+
+  if (existingFeedback && existingFeedback.avaliador_id !== context.user.id) {
+    throw new HttpError(409, "Este atendimento já foi avaliado");
+  }
+
+  if (ticket.status === "fechado" && existingFeedback) {
+    return { ok: true, status: "fechado" as TicketStatus };
+  }
+
+  if (ticket.status !== "resolvido") {
+    throw new HttpError(409, "A avaliação só pode ser enviada para tickets resolvidos");
+  }
+
+  if (!existingFeedback) {
+    const { error: feedbackError } = await admin.from("feedbacks").insert({
+      ticket_id: ticketId,
+      avaliador_id: context.user.id,
+      nota_satisfacao: rating,
+      comentarios: comment || null,
+      eficacia_solucao: true,
+    });
+
+    if (feedbackError) {
+      throw new HttpError(400, feedbackError.message);
+    }
+  }
+
+  const nowIso = new Date().toISOString();
+  const { data: closedTicket, error: closeError } = await admin
+    .from("tickets")
+    .update({
+      status: "fechado",
+      closed_at: nowIso,
+      resolved_at: ticket.resolved_at || nowIso,
+    })
+    .eq("id", ticketId)
+    .eq("status", "resolvido")
+    .select(ticketSelect)
+    .maybeSingle();
+
+  if (closeError) {
+    throw new HttpError(400, closeError.message);
+  }
+
+  if (!closedTicket) {
+    const latestTicket = await getTicket(ticketId);
+    if (latestTicket.status !== "fechado") {
+      throw new HttpError(409, "O ticket mudou de status antes da conclusão da avaliação");
+    }
+    return { ok: true, status: "fechado" as TicketStatus };
+  }
+
+  const finalTicket = closedTicket as TicketRecord;
+  const { error: interactionError } = await admin.from("interactions").insert({
+    ticket_id: ticketId,
+    autor_id: context.user.id,
+    mensagem: "Solicitante avaliou o atendimento. Status alterado para: Fechado",
+    tipo: "mudanca_status",
+  });
+
+  if (interactionError) {
+    console.error("[ticket-actions] Failed to create feedback close interaction", interactionError);
+  }
+
+  const requester = await getTicketRequester(finalTicket);
+  const departmentRecipients = await getDepartmentRecipients(finalTicket.tipo);
+  const ticketPayload = buildTicketPayload(finalTicket, requester, {
+    newStatus: "fechado",
+    actorName: context.profile.nome,
+  });
+
+  await Promise.all([
+    sendEmails("ticket_closed", ticketPayload, requesterRecipient(requester)),
+    sendEmails("ticket_closed", ticketPayload, departmentRecipients),
+  ]);
+
+  return { ok: true, status: "fechado" as TicketStatus };
+};
+
 const handleReopenTicketFromFeedback = async (
   payload: Record<string, unknown>,
   context: Awaited<ReturnType<typeof getUserAndRole>>,
@@ -1000,8 +1106,8 @@ const handleReopenTicketFromFeedback = async (
     throw new HttpError(403, "Somente o solicitante pode reabrir este ticket pela avaliação");
   }
 
-  if (!["resolvido", "fechado"].includes(currentTicket.status)) {
-    throw new HttpError(400, "A reabertura pela avaliação só está disponível para tickets resolvidos ou fechados");
+  if (currentTicket.status !== "resolvido") {
+    throw new HttpError(400, "A reabertura pela avaliação só está disponível para tickets resolvidos");
   }
 
   const alreadyEvaluated = await hasTicketFeedback(currentTicket.id);
@@ -1094,6 +1200,8 @@ const handler = async (req: Request): Promise<Response> => {
           return handleFinishService(body.payload || {}, context);
         case "update_asset_service":
           return handleUpdateAssetService(body.payload || {}, context);
+        case "submit_feedback":
+          return handleSubmitFeedback(body.payload || {}, context);
         case "reopen_ticket_from_feedback":
           return handleReopenTicketFromFeedback(body.payload || {}, context);
         default:

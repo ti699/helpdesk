@@ -365,7 +365,10 @@ export default function TicketWorkspace() {
       
       setTicket(prev => prev ? { ...prev, status: newStatus } : null);
       await Promise.all([fetchTicket(), fetchInteractions(), fetchServiceSessions()]);
-      toast({ title: 'Status atualizado!' });
+      toast({
+        title: 'Status atualizado!',
+        description: newStatus === 'fechado' ? 'O ticket foi fechado sem solicitar avaliação.' : undefined,
+      });
     } catch (error: any) {
       toast({ title: 'Erro', description: error.message, variant: 'destructive' });
     } finally {

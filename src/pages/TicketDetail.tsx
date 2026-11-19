@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -36,7 +36,7 @@ import { ptBR } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { getSignedUrl, getSignedUrls } from '@/lib/storage';
-import { addTicketMessage, reopenTicketFromFeedback } from '@/lib/ticketActions';
+import { addTicketMessage, reopenTicketFromFeedback, submitTicketFeedback } from '@/lib/ticketActions';
 
 
 
@@ -142,7 +142,6 @@ const formatDuration = (durationMs: number | null) => {
 
 export default function TicketDetail() {
   const { id } = useParams<{ id: string }>();
-  const [searchParams] = useSearchParams();
   const { user, assetAccess } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -167,12 +166,10 @@ export default function TicketDetail() {
   
   const audioRef = useRef<HTMLAudioElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const handledAutoFeedbackRef = useRef(false);
 
   useEffect(() => {
     if (id) {
       setFeedbackChecked(false);
-      handledAutoFeedbackRef.current = false;
       fetchTicket();
       fetchInteractions();
       checkFeedback();
@@ -201,30 +198,19 @@ export default function TicketDetail() {
   }, [ticket]);
 
   useEffect(() => {
-    if (
-      handledAutoFeedbackRef.current ||
-      !ticket ||
-      !user ||
-      !feedbackChecked ||
-      searchParams.get('avaliar') !== '1'
-    ) {
-      return;
-    }
+    if (!ticket || !user || !feedbackChecked) return;
 
-    handledAutoFeedbackRef.current = true;
+    const feedbackRequired =
+      ticket.status === 'resolvido' &&
+      ticket.solicitante?.id === user.id &&
+      !hasFeedback;
 
-    if ((ticket.status === 'resolvido' || ticket.status === 'fechado') && ticket.solicitante?.id === user.id && !hasFeedback) {
+    if (feedbackRequired) {
       setShowFeedback(true);
-      return;
+    } else if (ticket.status === 'fechado') {
+      setShowFeedback(false);
     }
-
-    toast({
-      title: hasFeedback ? 'Ticket já avaliado' : 'Avaliação indisponível',
-      description: hasFeedback
-        ? 'Este atendimento já recebeu uma avaliação.'
-        : 'A avaliação só fica disponível para o solicitante quando o ticket está resolvido ou fechado.',
-    });
-  }, [feedbackChecked, hasFeedback, searchParams, ticket, toast, user]);
+  }, [feedbackChecked, hasFeedback, ticket, user]);
 
   // Real-time subscription
   useEffect(() => {
@@ -440,25 +426,19 @@ export default function TicketDetail() {
 
     setSubmittingFeedback(true);
     try {
-      const { error } = await supabase.from('feedbacks').insert({
-        ticket_id: id,
-        avaliador_id: user.id,
-        nota_satisfacao: feedbackRating,
-        comentarios: feedbackComment || null,
-        eficacia_solucao: true,
-      });
-
-      if (error) throw error;
+      await submitTicketFeedback(id, feedbackRating, feedbackComment || undefined);
 
       toast({
-        title: 'Avaliação enviada!',
-        description: 'Obrigado pelo seu feedback',
+        title: 'Chamado fechado',
+        description: 'Avaliação enviada. Obrigado pelo seu feedback.',
       });
       setShowFeedback(false);
       setHasFeedback(true);
+      setTicket((current) => current ? { ...current, status: 'fechado' } : current);
       setSolutionResolved(null);
       setFeedbackRating(0);
       setFeedbackComment('');
+      await Promise.all([fetchTicket(), fetchInteractions()]);
     } catch (error) {
       console.error('Error submitting feedback:', error);
       toast({
@@ -601,9 +581,10 @@ export default function TicketDetail() {
   }
 
   const canSendMessage = ticket.status !== 'fechado';
-  const canEvaluate = (ticket.status === 'resolvido' || ticket.status === 'fechado') &&
-                      ticket.solicitante?.id === user?.id && 
+  const canEvaluate = ticket.status === 'resolvido' &&
+                      ticket.solicitante?.id === user?.id &&
                       !hasFeedback;
+  const feedbackRequired = canEvaluate;
 
   const hasAttachments = signedUrls.imagens.some(Boolean) || 
                          signedUrls.arquivos.some(Boolean) || 
@@ -834,6 +815,7 @@ export default function TicketDetail() {
       <Dialog
         open={showFeedback}
         onOpenChange={(open) => {
+          if (!open && feedbackRequired) return;
           setShowFeedback(open);
           if (!open) {
             setSolutionResolved(null);
@@ -935,9 +917,11 @@ export default function TicketDetail() {
             )}
           </div>
           <div className="flex flex-col-reverse sm:flex-row justify-end gap-2">
-            <Button variant="outline" onClick={() => setShowFeedback(false)} className="text-xs sm:text-sm">
-              Cancelar
-            </Button>
+            {!feedbackRequired && (
+              <Button variant="outline" onClick={() => setShowFeedback(false)} className="text-xs sm:text-sm">
+                Cancelar
+              </Button>
+            )}
             {solutionResolved === false ? (
               <Button
                 variant="destructive"

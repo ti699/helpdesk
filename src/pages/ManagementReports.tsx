@@ -280,6 +280,13 @@ const buildExecutorProductivity = (tickets: ManagementReportTicket[]): ExecutorP
     .sort((a, b) => b.totalTickets - a.totalTickets || a.name.localeCompare(b.name));
 };
 
+const localDateBoundary = (value: string, endOfDay = false) => {
+  const [year, month, day] = value.split('-').map(Number);
+  return endOfDay
+    ? new Date(year, month - 1, day, 23, 59, 59, 999).toISOString()
+    : new Date(year, month - 1, day).toISOString();
+};
+
 export default function ManagementReports() {
   const { user, role, managementReportAccess, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -295,6 +302,9 @@ export default function ManagementReports() {
     return format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd');
   });
   const [periodoFim, setPeriodoFim] = useState(() => searchParams.get('periodoFim') || format(new Date(), 'yyyy-MM-dd'));
+  const [periodoPor, setPeriodoPor] = useState<'abertura' | 'conclusao'>(() => (
+    searchParams.get('periodoPor') === 'conclusao' ? 'conclusao' : 'abertura'
+  ));
   const [fechadoInicio, setFechadoInicio] = useState(() => searchParams.get('fechadoInicio') || '');
   const [fechadoFim, setFechadoFim] = useState(() => searchParams.get('fechadoFim') || '');
   const [servicoInicioDe, setServicoInicioDe] = useState(() => searchParams.get('servicoInicioDe') || '');
@@ -384,6 +394,7 @@ export default function ManagementReports() {
     hasReportAccess,
     periodoInicio,
     periodoFim,
+    periodoPor,
     fechadoInicio,
     fechadoFim,
     servicoInicioDe,
@@ -406,24 +417,33 @@ export default function ManagementReports() {
     const pageSize = 1000;
     let from = 0;
     let allRows: any[] = [];
+    const periodoInicioIso = localDateBoundary(periodoInicio);
+    const periodoFimIso = localDateBoundary(periodoFim, true);
 
     while (true) {
       let query = supabase
         .from('tickets')
         .select('id, protocolo, titulo, status, tipo, categoria, prioridade, setor, solicitante_id, agente_id, created_at, resolved_at, closed_at, service_started_at, service_finished_at')
-        .gte('created_at', periodoInicio)
-        .lte('created_at', `${periodoFim}T23:59:59`)
         .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
         .range(from, from + pageSize - 1);
+
+      if (periodoPor === 'abertura') {
+        query = query.gte('created_at', periodoInicioIso).lte('created_at', periodoFimIso);
+      } else {
+        query = query.or(
+          `and(closed_at.gte.${periodoInicioIso},closed_at.lte.${periodoFimIso}),and(closed_at.is.null,resolved_at.gte.${periodoInicioIso},resolved_at.lte.${periodoFimIso})`,
+        );
+      }
 
       if (tipoFilter !== 'all') query = query.eq('tipo', tipoFilter);
       if (statusFilters.length > 0) query = query.in('status', statusFilters);
-      if (fechadoInicio) query = query.gte('closed_at', fechadoInicio);
-      if (fechadoFim) query = query.lte('closed_at', `${fechadoFim}T23:59:59`);
-      if (servicoInicioDe) query = query.gte('service_started_at', servicoInicioDe);
-      if (servicoInicioAte) query = query.lte('service_started_at', `${servicoInicioAte}T23:59:59`);
-      if (servicoFimDe) query = query.gte('service_finished_at', servicoFimDe);
-      if (servicoFimAte) query = query.lte('service_finished_at', `${servicoFimAte}T23:59:59`);
+      if (fechadoInicio) query = query.gte('closed_at', localDateBoundary(fechadoInicio));
+      if (fechadoFim) query = query.lte('closed_at', localDateBoundary(fechadoFim, true));
+      if (servicoInicioDe) query = query.gte('service_started_at', localDateBoundary(servicoInicioDe));
+      if (servicoInicioAte) query = query.lte('service_started_at', localDateBoundary(servicoInicioAte, true));
+      if (servicoFimDe) query = query.gte('service_finished_at', localDateBoundary(servicoFimDe));
+      if (servicoFimAte) query = query.lte('service_finished_at', localDateBoundary(servicoFimAte, true));
 
       const { data, error } = await query;
       if (error) throw error;
@@ -553,7 +573,8 @@ export default function ManagementReports() {
           solicitante_nome: profile?.nome || 'Não informado',
           solicitante_funcao: profile?.funcao || 'Não informado',
           agente_nome: ticket.agente_id ? profilesById.get(ticket.agente_id)?.nome || 'Não informado' : 'Não atribuído',
-          executor_names: ticketExecutors.map((executor) => executor.name).join(', ') || 'Não informado',
+          executor_names: ticketExecutors.map((executor) => executor.name).join(', ')
+            || (ticket.agente_id ? profilesById.get(ticket.agente_id)?.nome || 'Não informado' : 'Não informado'),
           executor_specialties: [...new Set(ticketExecutors.map((executor) => executor.specialty))].join(', ') || 'Não informado',
           executor_ids: ticketExecutorIds,
           executor_details: ticketExecutors,
@@ -660,6 +681,7 @@ export default function ManagementReports() {
     const now = new Date();
     setPeriodoInicio(format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd'));
     setPeriodoFim(format(now, 'yyyy-MM-dd'));
+    setPeriodoPor('abertura');
     setFechadoInicio('');
     setFechadoFim('');
     setServicoInicioDe('');
@@ -707,7 +729,7 @@ export default function ManagementReports() {
     const servicoLabel = servicoInicioDe || servicoInicioAte || servicoFimDe || servicoFimAte
       ? `Serviço: início ${servicoInicioDe || 'livre'} até ${servicoInicioAte || 'livre'} | fim ${servicoFimDe || 'livre'} até ${servicoFimAte || 'livre'}`
       : 'Serviço: não filtrado';
-    doc.text(`Período: ${format(new Date(`${periodoInicio}T00:00:00`), 'dd/MM/yyyy')} até ${format(new Date(`${periodoFim}T00:00:00`), 'dd/MM/yyyy')}`, marginX, 38);
+    doc.text(`${periodoPor === 'abertura' ? 'Abertura' : 'Conclusão'}: ${format(new Date(`${periodoInicio}T00:00:00`), 'dd/MM/yyyy')} até ${format(new Date(`${periodoFim}T00:00:00`), 'dd/MM/yyyy')}`, marginX, 38);
     doc.text(fechamentoLabel, marginX, 44);
     doc.text(servicoLabel, marginX, 50);
     doc.text(`Solicitante: ${requesterFilter === 'all' ? 'Todos' : requesterOptions.find((option) => option.id === requesterFilter)?.nome || 'Selecionado'} | Função: ${functionFilter === 'all' ? 'Todas' : functionFilter}`, marginX, 56);
@@ -1009,11 +1031,21 @@ export default function ManagementReports() {
           </CardHeader>
           <CardContent className="grid gap-2 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
             <div className="space-y-1">
-              <Label className="text-xs">Abertura início</Label>
+              <Label className="text-xs">Período por</Label>
+              <Select value={periodoPor} onValueChange={(value) => setPeriodoPor(value === 'conclusao' ? 'conclusao' : 'abertura')}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="abertura">Abertura</SelectItem>
+                  <SelectItem value="conclusao">Conclusão</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">{periodoPor === 'abertura' ? 'Abertura' : 'Conclusão'} início</Label>
               <Input className="h-9" type="date" value={periodoInicio} onChange={(event) => setPeriodoInicio(event.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Abertura fim</Label>
+              <Label className="text-xs">{periodoPor === 'abertura' ? 'Abertura' : 'Conclusão'} fim</Label>
               <Input className="h-9" type="date" value={periodoFim} onChange={(event) => setPeriodoFim(event.target.value)} />
             </div>
             <div className="space-y-1">
