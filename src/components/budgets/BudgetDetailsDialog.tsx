@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Check, FileText, RotateCcw, X } from 'lucide-react';
+import { Check, FileText, RotateCcw, Trash2, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { BudgetAuditHistory } from '@/components/budgets/BudgetAuditHistory';
 import {
   BudgetDecision,
   BudgetRecord,
   BudgetStatus,
   budgetStatusLabels,
   decideBudget,
+  deleteBudget,
   getBudgetAttachmentUrl,
   parseBudgetItems,
 } from '@/lib/budgets';
@@ -61,6 +63,9 @@ export function BudgetDetailsDialog({
   const [decision, setDecision] = useState<BudgetDecision | null>(null);
   const [reason, setReason] = useState('');
   const [savingDecision, setSavingDecision] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -135,6 +140,28 @@ export function BudgetDetailsDialog({
     }
   };
 
+  const submitDelete = async () => {
+    if (!budget || !isAdmin || !deleteReason.trim()) {
+      toast({ title: 'Motivo obrigatório', description: 'Informe o motivo da exclusão.', variant: 'destructive' });
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      await deleteBudget(budget.id, deleteReason);
+      toast({ title: 'Orçamento excluído', description: `${budget.codigo}: exclusão registrada no histórico.` });
+      setDeleteOpen(false);
+      setDeleteReason('');
+      onOpenChange(false);
+      await onChanged();
+    } catch (error) {
+      console.error('Error deleting budget:', error);
+      toast({ title: 'Não foi possível excluir o orçamento', description: error instanceof Error ? error.message : 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <>
       <Dialog open={open && !!budget} onOpenChange={onOpenChange}>
@@ -148,7 +175,7 @@ export function BudgetDetailsDialog({
                     {budgetStatusLabels[budget.status as BudgetStatus] || budget.status}
                   </Badge>
                 </DialogTitle>
-                <DialogDescription>Detalhes e histórico de decisão do orçamento.</DialogDescription>
+                <DialogDescription>Detalhes e histórico completo de auditoria do orçamento.</DialogDescription>
               </DialogHeader>
 
               <div className="grid gap-3 text-sm sm:grid-cols-2">
@@ -190,8 +217,14 @@ export function BudgetDetailsDialog({
               )}
               {budget.motivo_decisao && <div className="rounded-md border bg-muted/40 p-3 text-sm"><p className="font-medium">Motivo da decisão</p><p className="mt-1 whitespace-pre-wrap text-muted-foreground">{budget.motivo_decisao}</p></div>}
 
+              <section className="space-y-2" aria-label="Histórico de auditoria">
+                <h3 className="text-sm font-semibold">Histórico / Auditoria</h3>
+                <BudgetAuditHistory key={budget.id} budgetId={budget.id} />
+              </section>
+
               <DialogFooter className="flex-col gap-2 sm:flex-row">
                 {canEdit && <Button variant="outline" onClick={onEdit}>Editar orçamento</Button>}
+                {isAdmin && <Button variant="destructive" onClick={() => setDeleteOpen(true)}><Trash2 className="mr-2 h-4 w-4" />Excluir</Button>}
                 {isAdmin && budget.status === 'aguardando_aprovacao' && (
                   <div className="flex flex-wrap gap-2 sm:ml-auto">
                     <Button variant="outline" onClick={() => setDecision('revisao')}><RotateCcw className="mr-2 h-4 w-4" />Revisão</Button>
@@ -202,6 +235,42 @@ export function BudgetDetailsDialog({
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(nextOpen) => {
+          if (!deleting) {
+            setDeleteOpen(nextOpen);
+            if (!nextOpen) setDeleteReason('');
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excluir orçamento?</DialogTitle>
+            <DialogDescription>
+              {budget?.codigo} será removido da lista. O snapshot e o motivo permanecerão no histórico de auditoria.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="budget-delete-reason">Motivo da exclusão (obrigatório)</Label>
+            <Textarea
+              id="budget-delete-reason"
+              value={deleteReason}
+              onChange={(event) => setDeleteReason(event.target.value)}
+              maxLength={2000}
+              required
+              placeholder="Informe por que este orçamento será excluído"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDeleteOpen(false); setDeleteReason(''); }} disabled={deleting}>Cancelar</Button>
+            <Button variant="destructive" onClick={() => void submitDelete()} disabled={deleting || !deleteReason.trim()}>
+              {deleting ? 'Excluindo…' : 'Confirmar exclusão'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

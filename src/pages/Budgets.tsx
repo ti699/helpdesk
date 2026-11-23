@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { FileText, Loader2, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppHeader } from '@/components/AppHeader';
+import { BudgetAuditHistory } from '@/components/budgets/BudgetAuditHistory';
 import { BudgetDetailsDialog } from '@/components/budgets/BudgetDetailsDialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -309,40 +311,57 @@ export default function Budgets() {
           {canCreate && <Button onClick={openNewForm}><Plus className="mr-2 h-4 w-4" />Novo orçamento</Button>}
         </div>
 
-        <Card>
-          <CardContent className="grid gap-3 p-4 sm:grid-cols-[minmax(220px,1fr)_220px_180px]">
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por código, título, setor ou fornecedor" aria-label="Buscar orçamentos" />
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger aria-label="Filtrar por status"><SelectValue placeholder="Todos os status" /></SelectTrigger>
-              <SelectContent><SelectItem value="todos">Todos os status</SelectItem>{Object.entries(budgetStatusLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
-            </Select>
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger aria-label="Filtrar por tipo"><SelectValue placeholder="Todos os tipos" /></SelectTrigger>
-              <SelectContent><SelectItem value="todos">Todos os tipos</SelectItem><SelectItem value="interno">Interno</SelectItem><SelectItem value="externo">Externo</SelectItem></SelectContent>
-            </Select>
-          </CardContent>
-        </Card>
+        <Tabs defaultValue="orcamentos" className="space-y-4">
+          <TabsList className="grid w-full max-w-md grid-cols-2">
+            <TabsTrigger value="orcamentos">Orçamentos</TabsTrigger>
+            <TabsTrigger value="historico">Histórico / Auditoria</TabsTrigger>
+          </TabsList>
+          <TabsContent value="orcamentos" className="space-y-4">
+            <Card>
+              <CardContent className="grid gap-3 p-4 sm:grid-cols-[minmax(220px,1fr)_220px_180px]">
+                <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por código, título, setor ou fornecedor" aria-label="Buscar orçamentos" />
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger aria-label="Filtrar por status"><SelectValue placeholder="Todos os status" /></SelectTrigger>
+                  <SelectContent><SelectItem value="todos">Todos os status</SelectItem>{Object.entries(budgetStatusLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+                </Select>
+                <Select value={typeFilter} onValueChange={setTypeFilter}>
+                  <SelectTrigger aria-label="Filtrar por tipo"><SelectValue placeholder="Todos os tipos" /></SelectTrigger>
+                  <SelectContent><SelectItem value="todos">Todos os tipos</SelectItem><SelectItem value="interno">Interno</SelectItem><SelectItem value="externo">Externo</SelectItem></SelectContent>
+                </Select>
+              </CardContent>
+            </Card>
 
-        {loading ? (
-          <div className="flex h-48 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-        ) : filteredBudgets.length === 0 ? (
-          <Card><CardContent className="flex min-h-40 flex-col items-center justify-center gap-2 text-center"><FileText className="h-8 w-8 text-muted-foreground" /><p className="font-medium">Nenhum orçamento encontrado</p><p className="text-sm text-muted-foreground">Ajuste os filtros ou cadastre um novo orçamento.</p></CardContent></Card>
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {filteredBudgets.map((budget) => (
-              <Card key={budget.id} className="flex flex-col">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between gap-2"><div><CardDescription>{budget.codigo} · {budget.tipo === 'interno' ? 'Interno' : 'Externo'}</CardDescription><CardTitle className="mt-1 text-base">{budget.titulo}</CardTitle></div><Badge variant={statusVariant[budget.status as BudgetStatus]}>{budgetStatusLabels[budget.status as BudgetStatus]}</Badge></div>
-                </CardHeader>
-                <CardContent className="flex flex-1 flex-col gap-3">
-                  <p className="line-clamp-2 text-sm text-muted-foreground">{budget.descricao}</p>
-                  <div className="flex items-center justify-between gap-2 text-sm"><span>{budget.setor}{budget.fornecedor ? ` · ${budget.fornecedor}` : ''}</span><span className="shrink-0 font-semibold">{formatBudgetCurrency(budget.valor_total)}</span></div>
-                  <Button variant="outline" className="mt-auto" onClick={() => setSelectedBudget(budget)}>Ver detalhes</Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
+            {loading ? (
+              <div className="flex h-48 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+            ) : filteredBudgets.length === 0 ? (
+              <Card><CardContent className="flex min-h-40 flex-col items-center justify-center gap-2 text-center"><FileText className="h-8 w-8 text-muted-foreground" /><p className="font-medium">Nenhum orçamento encontrado</p><p className="text-sm text-muted-foreground">Ajuste os filtros ou cadastre um novo orçamento.</p></CardContent></Card>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {filteredBudgets.map((budget) => (
+                  <Card key={budget.id} className="flex flex-col">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between gap-2"><div><CardDescription>{budget.codigo} · {budget.tipo === 'interno' ? 'Interno' : 'Externo'}</CardDescription><CardTitle className="mt-1 text-base">{budget.titulo}</CardTitle></div><Badge variant={statusVariant[budget.status as BudgetStatus]}>{budgetStatusLabels[budget.status as BudgetStatus]}</Badge></div>
+                    </CardHeader>
+                    <CardContent className="flex flex-1 flex-col gap-3">
+                      <p className="line-clamp-2 text-sm text-muted-foreground">{budget.descricao}</p>
+                      <div className="flex items-center justify-between gap-2 text-sm"><span>{budget.setor}{budget.fornecedor ? ` · ${budget.fornecedor}` : ''}</span><span className="shrink-0 font-semibold">{formatBudgetCurrency(budget.valor_total)}</span></div>
+                      <Button variant="outline" className="mt-auto" onClick={() => setSelectedBudget(budget)}>Ver detalhes</Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+          <TabsContent value="historico">
+            <Card>
+              <CardHeader>
+                <CardTitle>Histórico / Auditoria</CardTitle>
+                <CardDescription>Registro permanente de criações, edições, envios, decisões e exclusões.</CardDescription>
+              </CardHeader>
+              <CardContent><BudgetAuditHistory /></CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </main>
 
       <Dialog open={formOpen} onOpenChange={closeForm}>

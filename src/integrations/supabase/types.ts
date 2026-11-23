@@ -364,6 +364,50 @@ export type Database = {
           },
         ]
       }
+      orcamentos_historico: {
+        Row: {
+          acao: string
+          created_at: string
+          detalhes: Json
+          id: string
+          motivo: string | null
+          orcamento_codigo: string
+          orcamento_id: string
+          ticket_id: string | null
+          usuario_id: string | null
+        }
+        Insert: {
+          acao: string
+          created_at?: string
+          detalhes?: Json
+          id?: string
+          motivo?: string | null
+          orcamento_codigo: string
+          orcamento_id: string
+          ticket_id?: string | null
+          usuario_id?: string | null
+        }
+        Update: {
+          acao?: string
+          created_at?: string
+          detalhes?: Json
+          id?: string
+          motivo?: string | null
+          orcamento_codigo?: string
+          orcamento_id?: string
+          ticket_id?: string | null
+          usuario_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orcamentos_historico_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ticket_service_session_executors: {
         Row: {
           executor_id: string
@@ -603,6 +647,10 @@ export type Database = {
           p_user_id: string
         }
         Returns: string
+      }
+      delete_orcamento: {
+        Args: { _motivo: string; _orcamento_id: string }
+        Returns: undefined
       }
       get_user_role: {
         Args: { _user_id: string }

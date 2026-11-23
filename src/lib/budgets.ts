@@ -151,6 +151,15 @@ export const decideBudget = async (
   return data;
 };
 
+export const deleteBudget = async (budgetId: string, reason: string): Promise<void> => {
+  const { error } = await supabase.rpc('delete_orcamento', {
+    _orcamento_id: budgetId,
+    _motivo: reason.trim(),
+  });
+
+  if (error) throw error;
+};
+
 export const getBudgetAttachmentUrl = async (path: string) => {
   const { data, error } = await supabase.storage
     .from(BUDGET_ATTACHMENT_BUCKET)
