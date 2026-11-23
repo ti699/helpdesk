@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { calculateBudgetTotal, roundBudgetValue } from './budgetUtils';
+import { calculateBudgetTotal, canAccessBudgets, roundBudgetValue } from './budgetUtils';
+
+describe('budget access', () => {
+  it('only allows admins and users with management access', () => {
+    expect(canAccessBudgets('admin', false)).toBe(true);
+    expect(canAccessBudgets('solicitante', true)).toBe(true);
+    expect(canAccessBudgets('agente_ti', false)).toBe(false);
+    expect(canAccessBudgets('agente_manutencao', false)).toBe(false);
+    expect(canAccessBudgets('solicitante', false)).toBe(false);
+  });
+});
 
 describe('budget totals', () => {
   it('calculates line totals and rounds the final value to cents', () => {

@@ -19,6 +19,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { AccountMenu } from '@/components/AccountMenu';
 import { AppHeader } from '@/components/AppHeader';
 import { TicketBudgetsSection } from '@/components/budgets/TicketBudgetsSection';
+import { canAccessBudgets } from '@/lib/budgetUtils';
 import { 
   ArrowLeft, 
   Send, 
@@ -174,7 +175,7 @@ interface Interaction {
 
 export default function TicketWorkspace() {
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
+  const { user, role, managementReportAccess } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   
@@ -580,7 +581,7 @@ export default function TicketWorkspace() {
             </CardContent>
           </Card>
 
-          <TicketBudgetsSection ticketId={ticket.id} />
+          {canAccessBudgets(role, managementReportAccess) && <TicketBudgetsSection ticketId={ticket.id} />}
 
           {/* Chat */}
           <Card className="flex flex-1 flex-col overflow-hidden">

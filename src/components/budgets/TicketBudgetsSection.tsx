@@ -9,21 +9,20 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BudgetRecord, BudgetStatus, budgetStatusLabels } from '@/lib/budgets';
-import { formatBudgetCurrency } from '@/lib/budgetUtils';
+import { canAccessBudgets, formatBudgetCurrency } from '@/lib/budgetUtils';
 
 interface TicketBudgetsSectionProps {
   ticketId: string;
 }
 
-const isAgentRole = (role: string | null) => role === 'agente_ti' || role === 'agente_manutencao';
-
 export function TicketBudgetsSection({ ticketId }: TicketBudgetsSectionProps) {
-  const { role, user } = useAuth();
+  const { role, user, managementReportAccess } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [budgets, setBudgets] = useState<BudgetRecord[]>([]);
   const [selectedBudget, setSelectedBudget] = useState<BudgetRecord | null>(null);
   const [loading, setLoading] = useState(true);
+  const canAccess = canAccessBudgets(role, managementReportAccess);
 
   const loadBudgets = useCallback(async () => {
     const { data, error } = await supabase
@@ -43,18 +42,18 @@ export function TicketBudgetsSection({ ticketId }: TicketBudgetsSectionProps) {
   }, [ticketId, toast]);
 
   useEffect(() => {
-    if (role === 'admin' || isAgentRole(role)) void loadBudgets();
+    if (canAccess) void loadBudgets();
     else setLoading(false);
-  }, [loadBudgets, role]);
+  }, [canAccess, loadBudgets]);
 
-  if (role !== 'admin' && !isAgentRole(role)) return null;
+  if (!canAccess) return null;
 
   return (
     <>
       <Card className="shrink-0">
         <CardHeader className="flex-row items-center justify-between space-y-0 py-3">
           <CardTitle className="flex items-center gap-2 text-base"><FileText className="h-4 w-4" />Orçamentos do chamado</CardTitle>
-          {isAgentRole(role) && (
+          {canAccess && (
             <Button asChild size="sm" variant="outline">
               <Link to={`/orcamentos?ticketId=${encodeURIComponent(ticketId)}`}><Plus className="mr-2 h-4 w-4" />Novo orçamento</Link>
             </Button>
@@ -77,7 +76,7 @@ export function TicketBudgetsSection({ ticketId }: TicketBudgetsSectionProps) {
         open={!!selectedBudget}
         onOpenChange={(open) => { if (!open) setSelectedBudget(null); }}
         isAdmin={role === 'admin'}
-        canEdit={!!selectedBudget && selectedBudget.criado_por === user?.id && ['rascunho', 'revisao'].includes(selectedBudget.status)}
+        canEdit={!!selectedBudget && canAccess && selectedBudget.criado_por === user?.id && ['rascunho', 'revisao'].includes(selectedBudget.status)}
         onEdit={() => {
           if (selectedBudget) navigate(`/orcamentos?ticketId=${encodeURIComponent(ticketId)}&budgetId=${encodeURIComponent(selectedBudget.id)}`);
         }}

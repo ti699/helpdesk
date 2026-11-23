@@ -4,6 +4,7 @@ import { BarChart3, Boxes, FileText, Headphones, Menu, Settings } from 'lucide-r
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { AccountMenu } from '@/components/AccountMenu';
+import { canAccessBudgets } from '@/lib/budgetUtils';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Badge } from '@/components/ui/badge';
@@ -72,7 +73,7 @@ export function AppHeader({ title, subtitle, badge, subNavigation = [], actions 
 
   const mainNavigation: HeaderSubNavigation[] = [
     { to: role === 'solicitante' ? '/' : '/dashboard', label: 'Help Desk', icon: Headphones, end: true },
-    ...(['agente_ti', 'agente_manutencao', 'admin'].includes(role || '')
+    ...(canAccessBudgets(role, managementReportAccess)
       ? [{ to: '/orcamentos', label: 'Orçamentos', icon: FileText, badge: role === 'admin' ? pendingBudgetCount : 0, end: true }]
       : []),
     ...(assetAccess ? [{ to: '/patrimonio', label: 'Patrimônio', icon: Boxes, end: true }] : []),

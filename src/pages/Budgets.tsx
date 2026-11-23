@@ -22,7 +22,7 @@ import {
   parseBudgetItems,
   saveBudget,
 } from '@/lib/budgets';
-import { BudgetLine, calculateBudgetTotal, formatBudgetCurrency, roundBudgetValue } from '@/lib/budgetUtils';
+import { BudgetLine, calculateBudgetTotal, canAccessBudgets, formatBudgetCurrency, roundBudgetValue } from '@/lib/budgetUtils';
 import { supabase } from '@/integrations/supabase/client';
 
 interface TicketOption {
@@ -42,7 +42,6 @@ interface BudgetFormValues {
   attachment: File | null;
 }
 
-const isAgentRole = (role: string | null) => role === 'agente_ti' || role === 'agente_manutencao';
 const createEmptyLine = (): BudgetLine => ({ id: crypto.randomUUID(), descricao: '', quantidade: 1, valor_unitario: 0, total: 0 });
 const emptyForm = (ticketId = ''): BudgetFormValues => ({
   titulo: '',
@@ -68,7 +67,7 @@ const fileIsAllowed = (file: File) =>
   && /\.(pdf|doc|docx|xls|xlsx|jpe?g|png)$/i.test(file.name);
 
 export default function Budgets() {
-  const { role, user } = useAuth();
+  const { role, user, managementReportAccess } = useAuth();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [budgets, setBudgets] = useState<BudgetRecord[]>([]);
@@ -84,7 +83,7 @@ export default function Budgets() {
   const [typeFilter, setTypeFilter] = useState('todos');
 
   const isAdmin = role === 'admin';
-  const canCreate = isAgentRole(role);
+  const canCreate = canAccessBudgets(role, managementReportAccess);
 
   const loadBudgets = useCallback(async () => {
     setLoading(true);
@@ -104,8 +103,9 @@ export default function Budgets() {
   }, [toast]);
 
   useEffect(() => {
-    void loadBudgets();
-  }, [loadBudgets]);
+    if (canCreate) void loadBudgets();
+    else setLoading(false);
+  }, [canCreate, loadBudgets]);
 
   useEffect(() => {
     if (!canCreate) return;
@@ -293,7 +293,7 @@ export default function Budgets() {
     if (!open) setEditingBudget(null);
   };
 
-  if (!isAdmin && !canCreate) {
+  if (!canCreate) {
     return <div className="min-h-screen bg-background"><AppHeader title="Orçamentos" /><main className="container py-8"><Alert><AlertDescription>Seu perfil não tem acesso ao módulo de orçamentos.</AlertDescription></Alert></main></div>;
   }
 
@@ -302,10 +302,10 @@ export default function Budgets() {
 
   return (
     <div className="min-h-screen bg-background">
-      <AppHeader title="Orçamentos" subtitle="Cadastro e aprovação de orçamentos" badge={isAdmin ? 'Administrador' : 'Agente'} />
+      <AppHeader title="Orçamentos" subtitle="Cadastro e aprovação de orçamentos" badge={isAdmin ? 'Administrador' : 'Gerencial'} />
       <main className="container space-y-4 px-3 py-4 sm:px-4 sm:py-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <div><h2 className="text-xl font-semibold">Orçamentos</h2><p className="text-sm text-muted-foreground">{isAdmin ? 'Todos os orçamentos aguardando decisão e histórico.' : 'Seus orçamentos e respectivas decisões.'}</p></div>
+          <div><h2 className="text-xl font-semibold">Orçamentos</h2><p className="text-sm text-muted-foreground">{isAdmin ? 'Todos os orçamentos aguardando decisão e histórico.' : 'Orçamentos e respectivas decisões.'}</p></div>
           {canCreate && <Button onClick={openNewForm}><Plus className="mr-2 h-4 w-4" />Novo orçamento</Button>}
         </div>
 

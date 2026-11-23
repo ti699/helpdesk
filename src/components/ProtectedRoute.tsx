@@ -6,10 +6,11 @@ interface ProtectedRouteProps {
   children: React.ReactNode;
   allowedRoles?: ('solicitante' | 'agente_ti' | 'agente_manutencao' | 'admin')[];
   requireAssetAccess?: boolean;
+  requireManagementReportAccess?: boolean;
 }
 
-export function ProtectedRoute({ children, allowedRoles, requireAssetAccess }: ProtectedRouteProps) {
-  const { user, role, assetAccess, loading } = useAuth();
+export function ProtectedRoute({ children, allowedRoles, requireAssetAccess, requireManagementReportAccess }: ProtectedRouteProps) {
+  const { user, role, assetAccess, managementReportAccess, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -31,6 +32,10 @@ export function ProtectedRoute({ children, allowedRoles, requireAssetAccess }: P
     } else if (role === 'agente_ti' || role === 'agente_manutencao' || role === 'admin') {
       return <Navigate to="/dashboard" replace />;
     }
+  }
+
+  if (requireManagementReportAccess && role !== 'admin' && !managementReportAccess) {
+    return <Navigate to={role === 'solicitante' ? '/' : '/dashboard'} replace />;
   }
 
   if (requireAssetAccess && !assetAccess) {

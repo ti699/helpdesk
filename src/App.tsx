@@ -114,7 +114,7 @@ const App = () => (
                   <Route
                     path="/orcamentos"
                     element={
-                      <ProtectedRoute allowedRoles={['agente_ti', 'agente_manutencao', 'admin']}>
+                      <ProtectedRoute requireManagementReportAccess>
                         <Budgets />
                       </ProtectedRoute>
                     }

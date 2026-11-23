@@ -9,6 +9,9 @@ export interface BudgetLine extends BudgetLineInput {
   total: number;
 }
 
+export const canAccessBudgets = (role: string | null, hasManagementAccess: boolean) =>
+  role === 'admin' || hasManagementAccess;
+
 export const roundBudgetValue = (value: number) =>
   Math.round((value + Number.EPSILON) * 100) / 100;
 
