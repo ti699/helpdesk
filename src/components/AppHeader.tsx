@@ -1,7 +1,8 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BarChart3, Boxes, Headphones, Menu, Settings } from 'lucide-react';
+import { BarChart3, Boxes, FileText, Headphones, Menu, Settings } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { AccountMenu } from '@/components/AccountMenu';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -14,6 +15,7 @@ export interface HeaderSubNavigation {
   to: string;
   label: string;
   icon?: React.ComponentType<{ className?: string }>;
+  badge?: number;
   end?: boolean;
 }
 
@@ -32,8 +34,47 @@ const isActivePath = (pathname: string, item: HeaderSubNavigation) => item.end
 export function AppHeader({ title, subtitle, badge, subNavigation = [], actions }: AppHeaderProps) {
   const location = useLocation();
   const { role, managementReportAccess, assetAccess } = useAuth();
+  const [pendingBudgetCount, setPendingBudgetCount] = useState(0);
+
+  useEffect(() => {
+    if (role !== 'admin') {
+      setPendingBudgetCount(0);
+      return;
+    }
+
+    let active = true;
+    const loadPendingBudgets = async () => {
+      const { count, error } = await supabase
+        .from('orcamentos')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'aguardando_aprovacao');
+
+      if (error) {
+        console.error('Error loading pending budget count:', error);
+        return;
+      }
+      if (active) setPendingBudgetCount(count || 0);
+    };
+
+    void loadPendingBudgets();
+    const channel = supabase
+      .channel('pending-budget-count')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orcamentos' }, () => {
+        void loadPendingBudgets();
+      })
+      .subscribe();
+
+    return () => {
+      active = false;
+      void supabase.removeChannel(channel);
+    };
+  }, [role]);
+
   const mainNavigation: HeaderSubNavigation[] = [
     { to: role === 'solicitante' ? '/' : '/dashboard', label: 'Help Desk', icon: Headphones, end: true },
+    ...(['agente_ti', 'agente_manutencao', 'admin'].includes(role || '')
+      ? [{ to: '/orcamentos', label: 'Orçamentos', icon: FileText, badge: role === 'admin' ? pendingBudgetCount : 0, end: true }]
+      : []),
     ...(assetAccess ? [{ to: '/patrimonio', label: 'Patrimônio', icon: Boxes, end: true }] : []),
     ...(role === 'admin' || managementReportAccess ? [{ to: '/gestao', label: 'Alta Gestão', icon: BarChart3, end: true }] : []),
     ...(role === 'admin' ? [{ to: '/admin', label: 'Administração', icon: Settings, end: true }] : []),
@@ -44,7 +85,7 @@ export function AppHeader({ title, subtitle, badge, subNavigation = [], actions 
     const active = isActivePath(location.pathname, item);
     return <Link key={item.to} to={item.to} className={mobile ? 'w-full' : ''}>
       <Button variant={active ? 'secondary' : 'ghost'} size="sm" className={mobile ? 'w-full justify-start' : 'h-9 whitespace-nowrap'}>
-        {Icon && <Icon className="mr-2 h-4 w-4" />}{item.label}
+        {Icon && <Icon className="mr-2 h-4 w-4" />}{item.label}{item.badge ? <Badge variant="destructive" className="ml-2 h-5 min-w-5 justify-center px-1 text-[10px]">{item.badge}</Badge> : null}
       </Button>
     </Link>;
   });

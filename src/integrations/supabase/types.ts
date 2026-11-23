@@ -290,6 +290,80 @@ export type Database = {
         }
         Relationships: []
       }
+      orcamentos: {
+        Row: {
+          anexo_nome: string | null
+          anexo_url: string | null
+          aprovado_em: string | null
+          aprovado_por: string | null
+          codigo: string
+          created_at: string
+          criado_por: string
+          descricao: string
+          fornecedor: string | null
+          id: string
+          itens: Json
+          motivo_decisao: string | null
+          setor: string
+          status: string
+          ticket_id: string | null
+          tipo: string
+          titulo: string
+          updated_at: string
+          valor_total: number
+        }
+        Insert: {
+          anexo_nome?: string | null
+          anexo_url?: string | null
+          aprovado_em?: string | null
+          aprovado_por?: string | null
+          codigo?: string
+          created_at?: string
+          criado_por?: string
+          descricao: string
+          fornecedor?: string | null
+          id?: string
+          itens?: Json
+          motivo_decisao?: string | null
+          setor: string
+          status?: string
+          ticket_id?: string | null
+          tipo: string
+          titulo: string
+          updated_at?: string
+          valor_total?: number
+        }
+        Update: {
+          anexo_nome?: string | null
+          anexo_url?: string | null
+          aprovado_em?: string | null
+          aprovado_por?: string | null
+          codigo?: string
+          created_at?: string
+          criado_por?: string
+          descricao?: string
+          fornecedor?: string | null
+          id?: string
+          itens?: Json
+          motivo_decisao?: string | null
+          setor?: string
+          status?: string
+          ticket_id?: string | null
+          tipo?: string
+          titulo?: string
+          updated_at?: string
+          valor_total?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orcamentos_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ticket_service_session_executors: {
         Row: {
           executor_id: string

@@ -29,6 +29,7 @@ const AssetImport = lazy(() => import("./pages/AssetImport"));
 const AssetMovements = lazy(() => import("./pages/AssetMovements"));
 const AssetSettings = lazy(() => import("./pages/AssetSettings"));
 const AssetReports = lazy(() => import("./pages/AssetReports"));
+const Budgets = lazy(() => import("./pages/Budgets"));
 
 const queryClient = new QueryClient();
 
@@ -107,6 +108,14 @@ const App = () => (
                     element={
                       <ProtectedRoute allowedRoles={['agente_ti', 'agente_manutencao', 'admin']}>
                         <TicketWorkspace />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/orcamentos"
+                    element={
+                      <ProtectedRoute allowedRoles={['agente_ti', 'agente_manutencao', 'admin']}>
+                        <Budgets />
                       </ProtectedRoute>
                     }
                   />

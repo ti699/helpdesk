@@ -16,6 +16,7 @@ import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { AccountMenu } from '@/components/AccountMenu';
 import { AppHeader } from '@/components/AppHeader';
+import { TicketBudgetsSection } from '@/components/budgets/TicketBudgetsSection';
 import { 
   ArrowLeft, 
   Send, 
@@ -711,6 +712,8 @@ export default function TicketDetail() {
             </div>
           </CardContent>
         </Card>
+
+        <TicketBudgetsSection ticketId={ticket.id} />
 
         {/* Chat */}
         <Card className="flex flex-1 flex-col">
