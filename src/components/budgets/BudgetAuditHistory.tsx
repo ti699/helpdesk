@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 
 type BudgetAuditRecord = Database['public']['Tables']['orcamentos_historico']['Row'];
 type BudgetAuditAction = 'criado' | 'editado' | 'enviado' | 'aprovado' | 'reprovado' | 'revisao' | 'excluido';
+type JsonObject = { [key: string]: Database['public']['Tables']['orcamentos_historico']['Row']['detalhes'] | undefined };
 
 const PAGE_SIZE = 50;
 
@@ -22,6 +23,26 @@ const actionLabels: Record<BudgetAuditAction, string> = {
   excluido: 'Excluído',
 };
 
+const isJsonObject = (value: unknown): value is JsonObject =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const getBudgetSnapshot = (details: BudgetAuditRecord['detalhes']): JsonObject | null => {
+  if (!isJsonObject(details)) return null;
+  const snapshot = details.depois || details.antes;
+  return isJsonObject(snapshot) ? snapshot : null;
+};
+
+const getSnapshotString = (snapshot: JsonObject | null, field: string): string | null => {
+  const value = snapshot?.[field];
+  return typeof value === 'string' && value.trim() ? value : null;
+};
+
+const getSnapshotAmount = (snapshot: JsonObject | null): number | null => {
+  const value = snapshot?.valor_total;
+  const amount = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(amount) ? amount : null;
+};
+
 interface BudgetAuditHistoryProps {
   budgetId?: string;
 }
@@ -33,6 +54,7 @@ export function BudgetAuditHistory({ budgetId }: BudgetAuditHistoryProps) {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [profileNames, setProfileNames] = useState<Record<string, string>>({});
 
   const loadPage = useCallback(async (from: number) => {
     setLoading(true);
@@ -49,6 +71,22 @@ export function BudgetAuditHistory({ budgetId }: BudgetAuditHistoryProps) {
       if (error) throw error;
 
       const page = data || [];
+      const profileIds = [...new Set(page.flatMap((entry) => [
+        entry.usuario_id,
+        getSnapshotString(getBudgetSnapshot(entry.detalhes), 'criado_por'),
+      ].filter((id): id is string => !!id)))];
+
+      if (profileIds.length > 0) {
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, nome')
+          .in('id', profileIds);
+        if (profilesError) throw profilesError;
+
+        const names = Object.fromEntries((profiles || []).map((profile) => [profile.id, profile.nome]));
+        setProfileNames((current) => ({ ...current, ...names }));
+      }
+
       setEntries((current) => from === 0 ? page : [...current, ...page]);
       setOffset(from + page.length);
       setHasMore(page.length === PAGE_SIZE);
@@ -66,6 +104,7 @@ export function BudgetAuditHistory({ budgetId }: BudgetAuditHistoryProps) {
     setEntries([]);
     setOffset(0);
     setHasMore(false);
+    setProfileNames({});
     void loadPage(0);
   }, [loadPage]);
 
@@ -81,6 +120,10 @@ export function BudgetAuditHistory({ budgetId }: BudgetAuditHistoryProps) {
       {entries.map((entry) => {
         const action = entry.acao as BudgetAuditAction;
         const destructive = action === 'reprovado' || action === 'excluido';
+        const snapshot = getBudgetSnapshot(entry.detalhes);
+        const creatorId = getSnapshotString(snapshot, 'criado_por');
+        const amount = getSnapshotAmount(snapshot);
+        const reason = entry.motivo || getSnapshotString(snapshot, 'motivo_decisao');
         return (
           <Card key={entry.id}>
             <CardContent className="space-y-2 p-4">
@@ -96,18 +139,17 @@ export function BudgetAuditHistory({ budgetId }: BudgetAuditHistoryProps) {
                 </time>
               </div>
               <p className="text-xs text-muted-foreground">
-                Usuário: {entry.usuario_id || 'indisponível'}
-                {entry.ticket_id ? ` · Chamado: ${entry.ticket_id}` : ''}
+                Ação por: {entry.usuario_id ? profileNames[entry.usuario_id] || 'Nome não disponível' : 'Não identificado'}
+                {' · '}
+                Criado por: {creatorId ? profileNames[creatorId] || 'Nome não disponível' : 'Não identificado'}
               </p>
-              {entry.motivo && (
-                <p className="whitespace-pre-wrap text-sm"><span className="font-medium">Motivo:</span> {entry.motivo}</p>
-              )}
-              <details className="rounded-md border bg-muted/30 p-3">
-                <summary className="cursor-pointer text-sm font-medium">Snapshot completo</summary>
-                <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap break-words text-xs">
-                  {JSON.stringify(entry.detalhes, null, 2)}
-                </pre>
-              </details>
+              <dl className="grid gap-2 text-sm sm:grid-cols-2">
+                <div><dt className="text-muted-foreground">Título</dt><dd className="font-medium">{getSnapshotString(snapshot, 'titulo') || 'Não informado'}</dd></div>
+                <div><dt className="text-muted-foreground">Setor</dt><dd>{getSnapshotString(snapshot, 'setor') || 'Não informado'}</dd></div>
+                <div><dt className="text-muted-foreground">Fornecedor</dt><dd>{getSnapshotString(snapshot, 'fornecedor') || 'Não informado'}</dd></div>
+                <div><dt className="text-muted-foreground">Valor total</dt><dd>{amount === null ? 'Não informado' : amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</dd></div>
+                <div className="sm:col-span-2"><dt className="text-muted-foreground">Motivo</dt><dd className="whitespace-pre-wrap">{reason || 'Não informado'}</dd></div>
+              </dl>
             </CardContent>
           </Card>
         );
