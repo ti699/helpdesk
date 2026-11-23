@@ -201,12 +201,13 @@ export default function TicketDetail() {
     if (!ticket || !user || !feedbackChecked) return;
 
     const feedbackRequired =
-      ticket.status === 'resolvido' &&
+      (ticket.status === 'resolvido' || ticket.status === 'fechado') &&
       ticket.solicitante?.id === user.id &&
       !hasFeedback;
 
     if (feedbackRequired) {
       setShowFeedback(true);
+      if (ticket.status === 'fechado') setSolutionResolved(true);
     } else if (ticket.status === 'fechado') {
       setShowFeedback(false);
     }
@@ -422,7 +423,7 @@ export default function TicketDetail() {
   };
 
   const submitFeedback = async () => {
-    if (!user || !id || solutionResolved !== true || feedbackRating === 0) return;
+    if (!user || !id || (solutionResolved !== true && ticket?.status !== 'fechado') || feedbackRating === 0) return;
 
     setSubmittingFeedback(true);
     try {
@@ -443,7 +444,7 @@ export default function TicketDetail() {
       console.error('Error submitting feedback:', error);
       toast({
         title: 'Erro',
-        description: 'Não foi possível enviar a avaliação',
+        description: error instanceof Error ? error.message : 'Não foi possível enviar a avaliação',
         variant: 'destructive',
       });
     } finally {
@@ -581,7 +582,7 @@ export default function TicketDetail() {
   }
 
   const canSendMessage = ticket.status !== 'fechado';
-  const canEvaluate = ticket.status === 'resolvido' &&
+  const canEvaluate = (ticket.status === 'resolvido' || ticket.status === 'fechado') &&
                       ticket.solicitante?.id === user?.id &&
                       !hasFeedback;
   const feedbackRequired = canEvaluate;
@@ -827,33 +828,37 @@ export default function TicketDetail() {
           <DialogHeader>
             <DialogTitle className="text-xl">Avalie este atendimento</DialogTitle>
             <DialogDescription className="text-sm">
-              Confirme primeiro se a solicitação foi resolvida. Caso não tenha sido, o mesmo ticket será reaberto.
+              {ticket.status === 'fechado'
+                ? 'Este chamado foi encerrado. Registre sua avaliação do atendimento.'
+                : 'Confirme primeiro se a solicitação foi resolvida. Caso não tenha sido, o mesmo ticket será reaberto.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-5 py-3 sm:py-4">
-            <div className="rounded-lg border bg-muted/40 p-4">
-              <Label className="text-sm font-semibold text-foreground">Foi resolvida a sua solicitação?</Label>
-              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <Button
-                  type="button"
-                  variant={solutionResolved === true ? 'default' : 'outline'}
-                  onClick={() => setSolutionResolved(true)}
-                  className="justify-center"
-                >
-                  Sim, foi resolvida
-                </Button>
-                <Button
-                  type="button"
-                  variant={solutionResolved === false ? 'destructive' : 'outline'}
-                  onClick={() => setSolutionResolved(false)}
-                  className="justify-center"
-                >
-                  Não, reabrir ticket
-                </Button>
+            {ticket.status === 'resolvido' && (
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <Label className="text-sm font-semibold text-foreground">Foi resolvida a sua solicitação?</Label>
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <Button
+                    type="button"
+                    variant={solutionResolved === true ? 'default' : 'outline'}
+                    onClick={() => setSolutionResolved(true)}
+                    className="justify-center"
+                  >
+                    Sim, foi resolvida
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={solutionResolved === false ? 'destructive' : 'outline'}
+                    onClick={() => setSolutionResolved(false)}
+                    className="justify-center"
+                  >
+                    Não, reabrir ticket
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
 
-            {solutionResolved === false && (
+            {solutionResolved === false && ticket.status === 'resolvido' && (
               <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/20">
                 <div>
                   <Label htmlFor="reopen-reason" className="text-xs sm:text-sm">
@@ -873,7 +878,7 @@ export default function TicketDetail() {
               </div>
             )}
 
-            {solutionResolved === true && (
+            {(solutionResolved === true || ticket.status === 'fechado') && (
               <>
                 <div className="rounded-lg border bg-yellow-50 p-4 text-center dark:bg-yellow-950/20">
                   <Label className="text-sm font-semibold text-foreground">Nota de satisfação</Label>
@@ -937,7 +942,7 @@ export default function TicketDetail() {
             ) : (
               <Button
                 onClick={submitFeedback}
-                disabled={solutionResolved !== true || feedbackRating === 0 || submittingFeedback}
+                disabled={(solutionResolved !== true && ticket.status !== 'fechado') || feedbackRating === 0 || submittingFeedback}
                 className="text-sm"
               >
                 {submittingFeedback ? (

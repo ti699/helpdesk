@@ -1019,8 +1019,8 @@ const handleSubmitFeedback = async (
     return { ok: true, status: "fechado" as TicketStatus };
   }
 
-  if (ticket.status !== "resolvido") {
-    throw new HttpError(409, "A avaliação só pode ser enviada para tickets resolvidos");
+  if (!["resolvido", "fechado"].includes(ticket.status)) {
+    throw new HttpError(409, "A avaliação só pode ser enviada para tickets resolvidos ou fechados");
   }
 
   if (!existingFeedback) {
@@ -1035,6 +1035,10 @@ const handleSubmitFeedback = async (
     if (feedbackError) {
       throw new HttpError(400, feedbackError.message);
     }
+  }
+
+  if (ticket.status === "fechado") {
+    return { ok: true, status: "fechado" as TicketStatus };
   }
 
   const nowIso = new Date().toISOString();
