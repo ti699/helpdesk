@@ -50,7 +50,26 @@ const invokeTicketAction = async <T>(
   });
 
   if (error) {
-    throw new Error(error.message || 'Não foi possível executar a ação do ticket');
+    let message = error.message || 'Não foi possível executar a ação do ticket';
+
+    if (error.context instanceof Response) {
+      const responseBody = await error.context.clone().text();
+
+      if (responseBody.trim()) {
+        try {
+          const details = JSON.parse(responseBody) as { error?: unknown; message?: unknown };
+          if (typeof details.error === 'string') {
+            message = details.error;
+          } else if (typeof details.message === 'string') {
+            message = details.message;
+          }
+        } catch {
+          message = responseBody.slice(0, 500);
+        }
+      }
+    }
+
+    throw new Error(message);
   }
 
   if (!data?.success) {
