@@ -1093,6 +1093,44 @@ const handleSubmitFeedback = async (
   return { ok: true, status: "fechado" as TicketStatus };
 };
 
+const handleRecordOtherDepartmentFeedback = async (
+  payload: Record<string, unknown>,
+  context: Awaited<ReturnType<typeof getUserAndRole>>,
+) => {
+  const ticketId = String(payload.ticketId || "");
+
+  if (!ticketId) {
+    throw new HttpError(400, "Ticket é obrigatório");
+  }
+
+  const { data: wasResolved, error } = await admin.rpc("record_ticket_other_department_feedback", {
+    _ticket_id: ticketId,
+    _requester_id: context.user.id,
+  });
+
+  if (error) {
+    throw new HttpError(400, error.message);
+  }
+
+  if (wasResolved) {
+    const ticket = await getTicket(ticketId);
+    const requester = await getTicketRequester(ticket);
+    const departmentRecipients = await getDepartmentRecipients(ticket.tipo);
+    const ticketPayload = buildTicketPayload(ticket, requester, {
+      newStatus: "fechado",
+      actorName: context.profile.nome,
+      messagePreview: "Solicitante informou que a solicitação pertence a outro setor.",
+    });
+
+    await Promise.all([
+      sendEmails("ticket_closed", ticketPayload, requesterRecipient(requester)),
+      sendEmails("ticket_closed", ticketPayload, departmentRecipients),
+    ]);
+  }
+
+  return { ok: true, status: "fechado" as TicketStatus };
+};
+
 const handleReopenTicketFromFeedback = async (
   payload: Record<string, unknown>,
   context: Awaited<ReturnType<typeof getUserAndRole>>,
@@ -1206,6 +1244,8 @@ const handler = async (req: Request): Promise<Response> => {
           return handleUpdateAssetService(body.payload || {}, context);
         case "submit_feedback":
           return handleSubmitFeedback(body.payload || {}, context);
+        case "record_other_department_feedback":
+          return handleRecordOtherDepartmentFeedback(body.payload || {}, context);
         case "reopen_ticket_from_feedback":
           return handleReopenTicketFromFeedback(body.payload || {}, context);
         default:

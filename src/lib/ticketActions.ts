@@ -11,6 +11,7 @@ type TicketActionName =
   | 'finish_service'
   | 'update_asset_service'
   | 'submit_feedback'
+  | 'record_other_department_feedback'
   | 'reopen_ticket_from_feedback';
 
 interface TicketActionResult<T> {
@@ -127,6 +128,11 @@ export const submitTicketFeedback = (ticketId: string, rating: number, comment?:
     ticketId,
     rating,
     comment,
+  });
+
+export const recordTicketOtherDepartmentFeedback = (ticketId: string) =>
+  invokeTicketAction<{ ok: boolean; status: TicketStatus }>('record_other_department_feedback', {
+    ticketId,
   });
 
 export const updateTicketAssetService = (
