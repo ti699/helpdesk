@@ -1093,19 +1093,25 @@ const handleSubmitFeedback = async (
   return { ok: true, status: "fechado" as TicketStatus };
 };
 
-const handleRecordOtherDepartmentFeedback = async (
+const handleRecordNoReopenFeedback = async (
   payload: Record<string, unknown>,
   context: Awaited<ReturnType<typeof getUserAndRole>>,
 ) => {
   const ticketId = String(payload.ticketId || "");
+  const outcome = payload.outcome;
 
-  if (!ticketId) {
-    throw new HttpError(400, "Ticket é obrigatório");
+  if (!ticketId || (outcome !== "other_department" && outcome !== "not_resolved_no_reopen")) {
+    throw new HttpError(400, "Ticket e motivo da avaliação são obrigatórios");
   }
 
-  const { data: wasResolved, error } = await admin.rpc("record_ticket_other_department_feedback", {
+  const messagePreview = outcome === "other_department"
+    ? "Solicitante informou que a solicitação pertence a outro setor."
+    : "Solicitante informou que a solicitação não foi resolvida, mas optou por não reabri-la.";
+
+  const { data: wasResolved, error } = await admin.rpc("record_ticket_no_reopen_feedback", {
     _ticket_id: ticketId,
     _requester_id: context.user.id,
+    _outcome: outcome,
   });
 
   if (error) {
@@ -1119,7 +1125,7 @@ const handleRecordOtherDepartmentFeedback = async (
     const ticketPayload = buildTicketPayload(ticket, requester, {
       newStatus: "fechado",
       actorName: context.profile.nome,
-      messagePreview: "Solicitante informou que a solicitação pertence a outro setor.",
+      messagePreview,
     });
 
     await Promise.all([
@@ -1244,8 +1250,8 @@ const handler = async (req: Request): Promise<Response> => {
           return handleUpdateAssetService(body.payload || {}, context);
         case "submit_feedback":
           return handleSubmitFeedback(body.payload || {}, context);
-        case "record_other_department_feedback":
-          return handleRecordOtherDepartmentFeedback(body.payload || {}, context);
+        case "record_no_reopen_feedback":
+          return handleRecordNoReopenFeedback(body.payload || {}, context);
         case "reopen_ticket_from_feedback":
           return handleReopenTicketFromFeedback(body.payload || {}, context);
         default:

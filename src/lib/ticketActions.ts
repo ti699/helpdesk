@@ -11,8 +11,10 @@ type TicketActionName =
   | 'finish_service'
   | 'update_asset_service'
   | 'submit_feedback'
-  | 'record_other_department_feedback'
+  | 'record_no_reopen_feedback'
   | 'reopen_ticket_from_feedback';
+
+export type NoReopenFeedbackOutcome = 'other_department' | 'not_resolved_no_reopen';
 
 interface TicketActionResult<T> {
   success: boolean;
@@ -130,9 +132,10 @@ export const submitTicketFeedback = (ticketId: string, rating: number, comment?:
     comment,
   });
 
-export const recordTicketOtherDepartmentFeedback = (ticketId: string) =>
-  invokeTicketAction<{ ok: boolean; status: TicketStatus }>('record_other_department_feedback', {
+export const recordTicketNoReopenFeedback = (ticketId: string, outcome: NoReopenFeedbackOutcome) =>
+  invokeTicketAction<{ ok: boolean; status: TicketStatus }>('record_no_reopen_feedback', {
     ticketId,
+    outcome,
   });
 
 export const updateTicketAssetService = (

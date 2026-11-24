@@ -40,9 +40,10 @@ import autoTable from 'jspdf-autotable';
 import { getSignedUrl, getSignedUrls } from '@/lib/storage';
 import {
   addTicketMessage,
-  recordTicketOtherDepartmentFeedback,
+  recordTicketNoReopenFeedback,
   reopenTicketFromFeedback,
   submitTicketFeedback,
+  type NoReopenFeedbackOutcome,
 } from '@/lib/ticketActions';
 
 
@@ -161,6 +162,7 @@ export default function TicketDetail() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackDismissed, setFeedbackDismissed] = useState(false);
+  const [submittingFeedbackOutcome, setSubmittingFeedbackOutcome] = useState<NoReopenFeedbackOutcome | null>(null);
   const [solutionResolved, setSolutionResolved] = useState<boolean | null>(null);
   const [feedbackRating, setFeedbackRating] = useState(0);
   const [feedbackComment, setFeedbackComment] = useState('');
@@ -491,16 +493,19 @@ export default function TicketDetail() {
     }
   };
 
-  const recordOtherDepartmentFeedback = async () => {
+  const recordNoReopenFeedback = async (outcome: NoReopenFeedbackOutcome) => {
     if (!user || !id) return;
 
+    setSubmittingFeedbackOutcome(outcome);
     setSubmittingFeedback(true);
     try {
-      await recordTicketOtherDepartmentFeedback(id);
+      await recordTicketNoReopenFeedback(id, outcome);
 
       toast({
         title: 'Avaliação registrada',
-        description: 'O chamado foi mantido fechado e registrado como de outro setor.',
+        description: outcome === 'other_department'
+          ? 'O chamado foi mantido fechado e registrado como de outro setor.'
+          : 'O chamado foi mantido fechado e sua decisão foi registrada.',
       });
       setShowFeedback(false);
       setHasFeedback(true);
@@ -511,7 +516,7 @@ export default function TicketDetail() {
       setReopenReason('');
       await Promise.all([fetchTicket(), fetchInteractions()]);
     } catch (error) {
-      console.error('Error recording other department feedback:', error);
+      console.error('Error recording feedback without reopening:', error);
       toast({
         title: 'Erro',
         description: error instanceof Error ? error.message : 'Não foi possível registrar a avaliação',
@@ -519,6 +524,7 @@ export default function TicketDetail() {
       });
     } finally {
       setSubmittingFeedback(false);
+      setSubmittingFeedbackOutcome(null);
     }
   };
 
@@ -872,13 +878,13 @@ export default function TicketDetail() {
             <DialogDescription className="text-sm">
               {ticket.status === 'fechado'
                 ? 'Este chamado foi encerrado. Registre sua avaliação do atendimento.'
-                : 'Confirme primeiro se a solicitação foi resolvida. Caso não tenha sido, o mesmo ticket será reaberto.'}
+                : 'Confirme se o chamado foi resolvido. Se não, você pode reabri-lo ou registrar que não quer reabrir.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-5 py-3 sm:py-4">
             {(ticket.status === 'resolvido' || ticket.status === 'fechado') && (
               <div className="rounded-lg border bg-muted/40 p-4">
-                <Label className="text-sm font-semibold text-foreground">Foi resolvida a sua solicitação?</Label>
+                <Label className="text-sm font-semibold text-foreground">O ticket foi resolvido?</Label>
                 <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <Button
                     type="button"
@@ -895,18 +901,28 @@ export default function TicketDetail() {
                       onClick={() => setSolutionResolved(false)}
                       className="justify-center"
                     >
-                      Não, reabrir ticket
+                      Não, reabrir chamado
                     </Button>
                   )}
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={recordOtherDepartmentFeedback}
+                    onClick={() => recordNoReopenFeedback('other_department')}
                     disabled={submittingFeedback}
                     className="justify-center"
                   >
-                    {submittingFeedback && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {submittingFeedbackOutcome === 'other_department' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Não, é de outro setor
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => recordNoReopenFeedback('not_resolved_no_reopen')}
+                    disabled={submittingFeedback}
+                    className="justify-center"
+                  >
+                    {submittingFeedbackOutcome === 'not_resolved_no_reopen' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Não foi resolvido, mas não quero reabrir
                   </Button>
                 </div>
               </div>
