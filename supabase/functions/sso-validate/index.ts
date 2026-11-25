@@ -12,6 +12,21 @@ const CORPORATE_EMAIL_DOMAINS = [
   "transastro.com.br",
 ];
 
+const APP_ROLES = ["solicitante", "agente_ti", "agente_manutencao", "admin"] as const;
+type AppRole = (typeof APP_ROLES)[number];
+
+const firstText = (...values: unknown[]) => {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+};
+
+const asAppRole = (value: string | null): AppRole | null => {
+  const normalized = value?.toLowerCase();
+  return APP_ROLES.find((role) => role === normalized) || null;
+};
+
 serve(async (request) => {
   if (request.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -85,15 +100,35 @@ serve(async (request) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
     const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    const admin = createClient(supabaseUrl, serviceRole);
+    if (!supabaseUrl || !serviceRole) {
+      return new Response(JSON.stringify({ valid: false, message: "Integração com o Supabase não configurada." }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
 
-    // Permite criar o usuário no Supabase Auth caso ele ainda não exista no HelpDesk
+    const admin = createClient(supabaseUrl, serviceRole);
+    const name = firstText(user.name, user.nome, user.full_name, user.fullName, hubData.name, hubData.nome);
+    const sector = firstText(user.setor, user.sector, user.department, hubData.setor, hubData.sector, hubData.department);
+    const position = firstText(
+      user.funcao, user.cargo, user.position, user.job_title, user.title, user.role,
+      hubData.funcao, hubData.cargo, hubData.position, hubData.job_title, hubData.title, hubData.role,
+    );
+    const hubRole = firstText(
+      user.app_role, user.helpdesk_role, user.user_role, user.role,
+      hubData.app_role, hubData.helpdesk_role, hubData.user_role, hubData.role,
+    );
+
     const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
       type: "magiclink",
       email,
       options: { 
         shouldCreateUser: true,
-        data: { name: user.name || user.nome || "" }
+        data: {
+          nome: name || email.split("@")[0],
+          setor: sector,
+          funcao: position,
+        },
       },
     });
 
@@ -104,6 +139,74 @@ serve(async (request) => {
         message: linkError?.message || "Falha ao gerar o token de acesso no HelpDesk.",
       }), {
         status: 403,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    const userId = linkData.user?.id;
+    if (!userId) {
+      console.error("Supabase não retornou o usuário associado ao link SSO.");
+      return new Response(JSON.stringify({
+        valid: false,
+        message: "Não foi possível identificar o usuário do Helpdesk.",
+      }), {
+        status: 502,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    const [
+      { data: existingProfile, error: profileReadError },
+      { data: existingRole, error: roleReadError },
+    ] = await Promise.all([
+      admin.from("profiles").select("nome, setor, funcao").eq("id", userId).maybeSingle(),
+      admin.from("user_roles").select("role").eq("user_id", userId).maybeSingle(),
+    ]);
+
+    if (profileReadError || roleReadError) {
+      const error = profileReadError || roleReadError;
+      console.error("Falha ao consultar perfil do usuário SSO:", error.message);
+      return new Response(JSON.stringify({
+        valid: false,
+        message: "Não foi possível carregar o perfil do usuário no Helpdesk.",
+      }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    const { error: profileUpsertError } = await admin.from("profiles").upsert({
+      id: userId,
+      email,
+      nome: name || existingProfile?.nome || email.split("@")[0],
+      setor: sector || existingProfile?.setor || null,
+      funcao: position || existingProfile?.funcao || null,
+    }, { onConflict: "id" });
+
+    if (profileUpsertError) {
+      console.error("Falha ao atualizar perfil do usuário SSO:", profileUpsertError.message);
+      return new Response(JSON.stringify({
+        valid: false,
+        message: "Não foi possível atualizar o perfil do usuário no Helpdesk.",
+      }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    const role = asAppRole(hubRole) || existingRole?.role || "solicitante";
+    const { error: roleUpsertError } = await admin.from("user_roles").upsert({
+      user_id: userId,
+      role,
+    }, { onConflict: "user_id" });
+
+    if (roleUpsertError) {
+      console.error("Falha ao atualizar role do usuário SSO:", roleUpsertError.message);
+      return new Response(JSON.stringify({
+        valid: false,
+        message: "Não foi possível atualizar o acesso do usuário no Helpdesk.",
+      }), {
+        status: 500,
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }

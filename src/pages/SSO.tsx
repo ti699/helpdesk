@@ -29,7 +29,9 @@ export default function SSO() {
           try {
             const body = await error.context?.json();
             if (body?.message) msg = body.message;
-          } catch (_) {}
+          } catch {
+            msg = "Não foi possível interpretar a resposta de erro do SSO.";
+          }
           throw new Error(`Falha no sso-validate: ${msg}`);
         }
 
