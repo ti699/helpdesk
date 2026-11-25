@@ -74,8 +74,28 @@ export const formatPriority = (priority?: string | null) => (
 );
 
 export const isValidDateInput = (value: string) => (
-  /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00`).getTime())
+  /^\d{4}-\d{2}-\d{2}$/.test(value)
+  && (() => {
+    const [year, month, day] = value.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    return date.getFullYear() === year
+      && date.getMonth() === month - 1
+      && date.getDate() === day;
+  })()
 );
+
+export const localDateBoundary = (value: string, endOfDay = false) => {
+  const [year, month, day] = value.split('-').map(Number);
+  return endOfDay
+    ? new Date(year, month - 1, day, 23, 59, 59, 999).toISOString()
+    : new Date(year, month - 1, day, 0, 0, 0, 0).toISOString();
+};
+
+export const hoursToMs = (value: string) => {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed * 3600000 : null;
+};
 
 export const sanitizeReportText = (value: unknown, fallback = 'Não informado') => {
   const text = String(value ?? '')

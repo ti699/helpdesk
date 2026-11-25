@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 import { AccountMenu } from '@/components/AccountMenu';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -170,7 +171,12 @@ const normalizePriority = (priority?: string | null) => (
 
 const formatPriority = (priority?: string | null) => priorityLabels[(priority || '').toLowerCase()] || priority || 'Não informada';
 
-const isValidDateInput = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00`).getTime());
+const isValidDateInput = (value: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+};
 
 const sanitizeReportText = (value: unknown, fallback = 'Não informado') => {
   const text = String(value ?? '')
@@ -240,8 +246,8 @@ const getDelayLabel = (ticket: ReportTicket, risk: ReturnType<typeof getRiskInfo
 
 const averageResolution = (tickets: ReportTicket[], type: TicketType) => {
   const durations = tickets
-    .filter((ticket) => ticket.tipo === type && ticket.resolved_at)
-    .map((ticket) => getDurationMs(ticket.created_at, ticket.resolved_at))
+    .filter((ticket) => ticket.tipo === type && (ticket.service_finished_at || ticket.resolved_at || ticket.closed_at))
+    .map((ticket) => getDurationMs(ticket.created_at, ticket.service_finished_at || ticket.resolved_at || ticket.closed_at))
     .filter((duration): duration is number => duration !== null);
 
   if (!durations.length) return null;
@@ -344,7 +350,7 @@ const buildExecutorProductivity = (tickets: ReportTicket[]): ExecutorProductivit
       const resolutionMs = getDurationMs(ticket.created_at, getResolutionEndDate(ticket));
       if (executionMs !== null && ticket.service_finished_at) current.executionDurations.push(executionMs);
       if (waitingMs !== null) current.waitingDurations.push(waitingMs);
-      if (resolutionMs !== null) current.resolutionDurations.push(resolutionMs);
+      if (resolutionMs !== null && getResolutionEndDate(ticket)) current.resolutionDurations.push(resolutionMs);
 
       rows.set(executor.id, current);
     });
@@ -435,6 +441,7 @@ function RankingBlock({ title, rows }: { title: string; rows: Array<{ label: str
 
 export default function TicketReports() {
   const { user, role, managementReportAccess, loading: authLoading } = useAuth();
+  const { toast } = useToast();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
@@ -511,6 +518,12 @@ export default function TicketReports() {
     ];
     const invalidNumeric = numericFilters.find(([, value]) => value && hoursToMs(value) === null);
     if (invalidNumeric) return { valid: false, message: `Informe um ${invalidNumeric[0]} válido.` };
+    if (tempoExecucaoMin && tempoExecucaoMax && hoursToMs(tempoExecucaoMin)! > hoursToMs(tempoExecucaoMax)!) {
+      return { valid: false, message: 'O tempo mínimo de execução não pode ser maior que o máximo.' };
+    }
+    if (tempoResolucaoMin && tempoResolucaoMax && hoursToMs(tempoResolucaoMin)! > hoursToMs(tempoResolucaoMax)!) {
+      return { valid: false, message: 'O tempo mínimo de resolução não pode ser maior que o máximo.' };
+    }
     return { valid: true, message: '' };
   }, [
     periodoInicio,
@@ -585,7 +598,7 @@ export default function TicketReports() {
         query = query.gte('created_at', periodoInicioIso).lte('created_at', periodoFimIso);
       } else {
         query = query.or(
-          `and(closed_at.gte.${periodoInicioIso},closed_at.lte.${periodoFimIso}),and(closed_at.is.null,resolved_at.gte.${periodoInicioIso},resolved_at.lte.${periodoFimIso})`,
+          `and(closed_at.gte.${periodoInicioIso},closed_at.lte.${periodoFimIso}),and(resolved_at.gte.${periodoInicioIso},resolved_at.lte.${periodoFimIso})`,
         );
       }
 
@@ -793,6 +806,12 @@ export default function TicketReports() {
       setHasLoadedOnce(true);
     } catch (error) {
       console.error('Erro ao gerar relatório de tickets:', error);
+      toast({
+        title: 'Erro no relatório',
+        description: 'Não foi possível consultar os dados do relatório.',
+        variant: 'destructive',
+      });
+      setTickets([]);
     } finally {
       setLoading(false);
     }

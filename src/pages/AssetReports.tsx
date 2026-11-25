@@ -31,18 +31,67 @@ export default function AssetReports() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
+  const dateFilterValid = useMemo(() => {
+    if (!startDate && !endDate) return true;
+    if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return false;
+    if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) return false;
+    if (startDate && endDate && startDate > endDate) return false;
+    return true;
+  }, [startDate, endDate]);
+
   useEffect(() => {
-    Promise.all([
-      db.from('assets').select(`*, category:asset_categories(*), status:asset_statuses(*), location:asset_locations(*), responsible:profiles!assets_responsible_user_id_fkey(id, nome, email, setor)`).eq('active', true).order('created_at', { ascending: false }),
-      db.from('asset_movements').select('asset_id'),
-      db.from('tickets').select('asset_id, asset_final_cost').not('asset_id', 'is', null),
-    ]).then(([assetResult, movementResult, costResult]) => {
-      if (assetResult.error) toast({ title: 'Erro', description: 'Não foi possível carregar o relatório.', variant: 'destructive' });
-      setAssets(assetResult.data || []);
-      setMovementAssetIds((movementResult.data || []).map((item: { asset_id: string }) => item.asset_id));
-      setMaintenanceCosts(costResult.data || []);
-      setLoading(false);
-    });
+    const loadReport = async () => {
+      try {
+        const pageSize = 1000;
+        const allAssets: AssetRecord[] = [];
+        for (let from = 0; ; from += pageSize) {
+          const { data, error } = await db
+            .from('assets')
+            .select(`*, category:asset_categories(*), status:asset_statuses(*), location:asset_locations(*), responsible:profiles!assets_responsible_user_id_fkey(id, nome, email, setor)`)
+            .eq('active', true)
+            .order('created_at', { ascending: false })
+            .range(from, from + pageSize - 1);
+          if (error) throw error;
+          const rows = (data || []) as AssetRecord[];
+          allAssets.push(...rows);
+          if (rows.length < pageSize) break;
+        }
+
+        const allMovements: Array<{ asset_id: string }> = [];
+        for (let from = 0; ; from += pageSize) {
+          const { data, error } = await db.from('asset_movements').select('asset_id').range(from, from + pageSize - 1);
+          if (error) throw error;
+          const rows = (data || []) as Array<{ asset_id: string }>;
+          allMovements.push(...rows);
+          if (rows.length < pageSize) break;
+        }
+
+        const allCosts: Array<{ asset_id: string; asset_final_cost: number | null }> = [];
+        for (let from = 0; ; from += pageSize) {
+          const { data, error } = await db
+            .from('tickets')
+            .select('asset_id, asset_final_cost')
+            .not('asset_id', 'is', null)
+            .range(from, from + pageSize - 1);
+          if (error) throw error;
+          const rows = (data || []) as Array<{ asset_id: string; asset_final_cost: number | null }>;
+          allCosts.push(...rows);
+          if (rows.length < pageSize) break;
+        }
+
+        setAssets(allAssets);
+        setMovementAssetIds(allMovements.map((item) => item.asset_id));
+        setMaintenanceCosts(allCosts);
+      } catch (error) {
+        console.error('Erro ao carregar relatório patrimonial:', error);
+        toast({ title: 'Erro', description: 'Não foi possível carregar o relatório patrimonial.', variant: 'destructive' });
+        setAssets([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadReport();
   }, [toast]);
 
   const options = useMemo(() => ({
@@ -53,11 +102,11 @@ export default function AssetReports() {
     locations: [...new Set(assets.map((item) => item.location?.name).filter(Boolean) as string[])].sort(),
   }), [assets]);
 
-  const filtered = useMemo(() => assets.filter((item) => (department === 'all' || item.department === department)
+  const filtered = useMemo(() => !dateFilterValid ? [] : assets.filter((item) => (department === 'all' || item.department === department)
     && (category === 'all' || item.category?.name === category) && (status === 'all' || item.status?.name === status)
     && (responsible === 'all' || (item.responsible?.nome || item.responsible_name) === responsible)
-    && (location === 'all' || item.location?.name === location) && (!startDate || item.created_at >= startDate)
-    && (!endDate || item.created_at <= `${endDate}T23:59:59`)), [assets, category, department, endDate, location, responsible, startDate, status]);
+    && (location === 'all' || item.location?.name === location) && (!startDate || item.created_at >= `${startDate}T00:00:00`)
+    && (!endDate || item.created_at <= `${endDate}T23:59:59.999`)), [assets, category, dateFilterValid, department, endDate, location, responsible, startDate, status]);
 
   const metrics = useMemo(() => {
     const now = Date.now();
@@ -90,14 +139,23 @@ export default function AssetReports() {
   ];
 
   const downloadCsv = () => {
+    if (!dateFilterValid) return;
     const headers = ['Código', 'Item', 'Categoria', 'Status', 'Setor', 'Localização', 'Responsável', 'Valor'];
     const rows = filtered.map((item) => [item.asset_code, item.name, item.category?.name, item.status?.name, item.department, item.location?.name, item.responsible?.nome || item.responsible_name, item.purchase_value]);
     const escape = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`;
     const blob = new Blob(['\ufeff' + [headers, ...rows].map((row) => row.map(escape).join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `relatorio-patrimonio-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `relatorio-patrimonio-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   };
 
   const downloadPdf = () => {
+    if (!dateFilterValid) return;
     const doc = new jsPDF({ orientation: 'landscape' });
     doc.setFillColor(201, 32, 38); doc.rect(0, 0, 297, 25, 'F'); doc.setTextColor(255); doc.setFontSize(18); doc.text('Relatório de Controle Patrimonial', 14, 16);
     doc.setTextColor(25); doc.setFontSize(9); doc.text(`Emitido em ${new Date().toLocaleString('pt-BR')} | ${filtered.length} itens | Valor ${formatCurrency(metrics.value)}`, 14, 34);
@@ -109,7 +167,7 @@ export default function AssetReports() {
   };
 
   return <div className="min-h-screen bg-background"><AssetHeader title="Relatório patrimonial" subtitle="Prévia antes da exportação" /><main className="container space-y-4 px-3 py-4 sm:px-4 sm:py-6">
-    <Card className="rounded-md"><CardHeader><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><CardTitle className="flex items-center gap-2 text-lg"><BarChart3 className="h-5 w-5" />Filtros do relatório</CardTitle><div className="flex gap-2"><Button variant="outline" onClick={downloadCsv}><Download className="mr-2 h-4 w-4" />CSV</Button><Button onClick={downloadPdf}><FileDown className="mr-2 h-4 w-4" />Exportar PDF</Button></div></div></CardHeader><CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">{reportFilters.map(({ label, value, setValue, values }) => <Select key={label} value={value} onValueChange={setValue}><SelectTrigger><SelectValue placeholder={label} /></SelectTrigger><SelectContent><SelectItem value="all">{label}: todos</SelectItem>{values.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select>)}<Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} title="Cadastro a partir de" /><Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} title="Cadastro até" /></CardContent></Card>
+    <Card className="rounded-md"><CardHeader><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><CardTitle className="flex items-center gap-2 text-lg"><BarChart3 className="h-5 w-5" />Filtros do relatório</CardTitle><div className="flex gap-2"><Button variant="outline" onClick={downloadCsv} disabled={!dateFilterValid}><Download className="mr-2 h-4 w-4" />CSV</Button><Button onClick={downloadPdf} disabled={!dateFilterValid}><FileDown className="mr-2 h-4 w-4" />Exportar PDF</Button></div></div></CardHeader><CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">{reportFilters.map(({ label, value, setValue, values }) => <Select key={label} value={value} onValueChange={setValue}><SelectTrigger><SelectValue placeholder={label} /></SelectTrigger><SelectContent><SelectItem value="all">{label}: todos</SelectItem>{values.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select>)}<Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} title="Cadastro a partir de" /><Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} title="Cadastro até" /><p className={`text-xs sm:col-span-2 lg:col-span-4 xl:col-span-7 ${dateFilterValid ? 'text-muted-foreground' : 'text-destructive'}`}>{dateFilterValid ? 'O período considera a data de cadastro do patrimônio.' : 'A data inicial não pode ser maior que a data final.'}</p></CardContent></Card>
     {loading ? <div className="flex h-64 items-center justify-center"><Loader2 className="h-9 w-9 animate-spin" /></div> : <><section className="grid grid-cols-2 gap-3 lg:grid-cols-4"><AssetMetricCard label="Itens filtrados" value={metrics.total} icon={Boxes} /><AssetMetricCard label="Valor patrimonial" value={formatCurrency(metrics.value)} icon={CircleDollarSign} accent="#16a34a" /><AssetMetricCard label="Sem responsável" value={metrics.unassigned} icon={UserRoundX} accent="#eab308" /><AssetMetricCard label="Em manutenção" value={metrics.maintenance} icon={Wrench} accent="#ea580c" /><AssetMetricCard label="Baixa ou risco" value={metrics.risk} icon={ShieldAlert} accent="#dc2626" /><AssetMetricCard label="Garantias vencidas" value={metrics.expiredWarranty} detail={`${metrics.expiringWarranty} vencem em 60 dias`} icon={CalendarClock} accent="#ca8a04" /><AssetMetricCard label="Custo de manutenção" value={formatCurrency(metrics.maintenanceCost)} icon={CircleDollarSign} accent="#7c3aed" /><AssetMetricCard label="Movimentações" value={metrics.movements} icon={Repeat2} accent="#2563eb" /></section>
       <section className="grid gap-4 lg:grid-cols-2">{[['Distribuição por setor', byDepartment], ['Distribuição por categoria', byCategory], ['Distribuição por status', byStatus], ['Principais responsáveis', byResponsible]].map(([title, rows]) => <Card key={title as string} className="rounded-md"><CardHeader><CardTitle className="text-base">{title as string}</CardTitle></CardHeader><CardContent className="space-y-3">{(rows as [string, number][]).slice(0, 10).map(([label, count]) => <div key={label}><div className="mb-1 flex justify-between text-sm"><span>{label}</span><span>{count}</span></div><div className="h-2 rounded-full bg-muted"><div className="h-2 rounded-full bg-primary" style={{ width: `${metrics.total ? (count / metrics.total) * 100 : 0}%` }} /></div></div>)}</CardContent></Card>)}</section>
       <Card className="rounded-md"><CardHeader><CardTitle className="text-lg">Relação detalhada</CardTitle></CardHeader><CardContent><div className="overflow-x-auto rounded-md border"><Table><TableHeader><TableRow><TableHead>Código</TableHead><TableHead>Item</TableHead><TableHead>Status</TableHead><TableHead>Setor</TableHead><TableHead>Responsável</TableHead><TableHead className="text-right">Valor</TableHead></TableRow></TableHeader><TableBody>{filtered.map((item) => <TableRow key={item.id}><TableCell className="font-mono text-xs text-primary">{item.asset_code}</TableCell><TableCell>{item.name}</TableCell><TableCell>{item.status?.name}</TableCell><TableCell>{item.department || '-'}</TableCell><TableCell>{item.responsible?.nome || item.responsible_name || '-'}</TableCell><TableCell className="text-right">{formatCurrency(Number(item.purchase_value) || null)}</TableCell></TableRow>)}</TableBody></Table></div></CardContent></Card></>}
