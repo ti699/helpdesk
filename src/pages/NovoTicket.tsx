@@ -142,14 +142,29 @@ export default function NovoTicket() {
         return;
       }
 
-      const { data: feedbacks, error: feedbacksError } = await supabase
-        .from('feedbacks')
-        .select('ticket_id')
-        .in('ticket_id', ticketIds);
+      const [feedbacksResult, outcomeInteractionsResult] = await Promise.all([
+        supabase
+          .from('feedbacks')
+          .select('ticket_id')
+          .in('ticket_id', ticketIds),
+        supabase
+          .from('interactions')
+          .select('ticket_id')
+          .in('ticket_id', ticketIds)
+          .eq('tipo', 'mudanca_status')
+          .in('mensagem', [
+            'Solicitante informou que a solicitação pertence a outro setor. Chamado mantido fechado.',
+            'Solicitante informou que o chamado não foi resolvido, mas optou por não reabri-lo. Chamado mantido fechado.',
+          ]),
+      ]);
 
-      if (feedbacksError) throw feedbacksError;
+      if (feedbacksResult.error) throw feedbacksResult.error;
+      if (outcomeInteractionsResult.error) throw outcomeInteractionsResult.error;
 
-      const evaluatedTicketIds = new Set((feedbacks || []).map((feedback) => feedback.ticket_id));
+      const evaluatedTicketIds = new Set([
+        ...(feedbacksResult.data || []).map((feedback) => feedback.ticket_id),
+        ...(outcomeInteractionsResult.data || []).map((interaction) => interaction.ticket_id),
+      ]);
       setPendingFeedbackTickets(
         (resolvedTickets || []).filter((ticket) => !evaluatedTicketIds.has(ticket.id)) as PendingFeedbackTicket[],
       );

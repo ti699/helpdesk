@@ -123,7 +123,7 @@ const ensureCanDeactivate = async (targetUserId: string, adminUserId: string) =>
     .from("profiles")
     .select("id")
     .in("id", adminIds)
-    .eq("active", true);
+    .or("active.is.null,active.eq.true");
 
   if (activeAdminsError) {
     throw new HttpError(400, activeAdminsError.message);

@@ -42,7 +42,7 @@ export default function AssetMovements() {
     const [movementResult, assetResult, profileResult, locationResult, statusResult] = await Promise.all([
       db.from('asset_movements').select('*, asset:assets(id, asset_code, name)').order('created_at', { ascending: false }).limit(300),
       db.from('assets').select('id, asset_code, name, responsible_user_id, responsible_name, department, location_id, status_id').eq('active', true).order('asset_code'),
-      db.from('profiles').select('id, nome, email, setor').eq('active', true).order('nome'),
+      db.from('profiles').select('id, nome, email, setor').or('active.is.null,active.eq.true').order('nome'),
       db.from('asset_locations').select('*').eq('active', true).order('name'),
       db.from('asset_statuses').select('*').eq('active', true).order('sort_order'),
     ]);

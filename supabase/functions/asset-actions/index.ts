@@ -317,7 +317,7 @@ serve(async (req) => {
         admin.from("asset_statuses").select("id, name, color, is_terminal, is_default").eq("active", true),
         admin.from("asset_locations").select("id, name").eq("active", true),
         admin.from("assets").select("asset_code"),
-        admin.from("profiles").select("id, email, nome").eq("active", true),
+        admin.from("profiles").select("id, email, nome").or("active.is.null,active.eq.true"),
       ]);
       const categoryMap = new Map((categories || []).map((row) => [normalizeKey(row.name), row.id]));
       const statusMap = new Map((statuses || []).map((row) => [normalizeKey(row.name), row.id]));

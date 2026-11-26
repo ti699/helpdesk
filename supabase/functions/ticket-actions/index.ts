@@ -199,16 +199,30 @@ const getPendingFeedbackTickets = async (requesterId: string) => {
   const ticketIds = (tickets || []).map((ticket) => ticket.id);
   if (!ticketIds.length) return [];
 
-  const { data: feedbacks, error: feedbacksError } = await admin
-    .from("feedbacks")
-    .select("ticket_id")
-    .in("ticket_id", ticketIds);
+  const [feedbacksResult, outcomeInteractionsResult] = await Promise.all([
+    admin.from("feedbacks").select("ticket_id").in("ticket_id", ticketIds),
+    admin
+      .from("interactions")
+      .select("ticket_id")
+      .in("ticket_id", ticketIds)
+      .eq("tipo", "mudanca_status")
+      .in("mensagem", [
+        "Solicitante informou que a solicitação pertence a outro setor. Chamado mantido fechado.",
+        "Solicitante informou que o chamado não foi resolvido, mas optou por não reabri-lo. Chamado mantido fechado.",
+      ]),
+  ]);
 
-  if (feedbacksError) {
-    throw new HttpError(400, feedbacksError.message);
+  if (feedbacksResult.error || outcomeInteractionsResult.error) {
+    throw new HttpError(
+      400,
+      feedbacksResult.error?.message || outcomeInteractionsResult.error?.message || "Não foi possível verificar as avaliações",
+    );
   }
 
-  const evaluatedTicketIds = new Set((feedbacks || []).map((feedback) => feedback.ticket_id));
+  const evaluatedTicketIds = new Set([
+    ...(feedbacksResult.data || []).map((feedback) => feedback.ticket_id),
+    ...(outcomeInteractionsResult.data || []).map((interaction) => interaction.ticket_id),
+  ]);
   return (tickets || []).filter((ticket) => !evaluatedTicketIds.has(ticket.id));
 };
 

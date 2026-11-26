@@ -71,7 +71,7 @@ export default function AssetFormPage() {
           db.from('asset_categories').select('*').eq('active', true).order('sort_order'),
           db.from('asset_statuses').select('*').eq('active', true).order('sort_order'),
           db.from('asset_locations').select('*').eq('active', true).order('name'),
-          db.from('profiles').select('id, nome, email, setor').eq('active', true).order('nome'),
+          db.from('profiles').select('id, nome, email, setor').or('active.is.null,active.eq.true').order('nome'),
           id ? db.from('assets').select('*').eq('id', id).single() : Promise.resolve({ data: null, error: null }),
         ]);
         if (categoriesResult.error || statusesResult.error || locationsResult.error || profilesResult.error || assetResult.error) {

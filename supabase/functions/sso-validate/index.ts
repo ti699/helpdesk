@@ -159,7 +159,7 @@ serve(async (request) => {
       { data: existingProfile, error: profileReadError },
       { data: existingRole, error: roleReadError },
     ] = await Promise.all([
-      admin.from("profiles").select("nome, setor, funcao").eq("id", userId).maybeSingle(),
+      admin.from("profiles").select("nome, setor, funcao, active").eq("id", userId).maybeSingle(),
       admin.from("user_roles").select("role").eq("user_id", userId).maybeSingle(),
     ]);
 
@@ -181,6 +181,7 @@ serve(async (request) => {
       nome: name || existingProfile?.nome || email.split("@")[0],
       setor: sector || existingProfile?.setor || null,
       funcao: position || existingProfile?.funcao || null,
+      active: existingProfile?.active ?? true,
     }, { onConflict: "id" });
 
     if (profileUpsertError) {
