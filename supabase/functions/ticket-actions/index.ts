@@ -82,7 +82,8 @@ const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const emailFrom = Deno.env.get("EMAIL_FROM") || "Help Desk Astrotur <onboarding@resend.dev>";
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
-const admin = createClient(supabaseUrl, supabaseServiceRoleKey);
+const serviceRoleAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
+const admin = serviceRoleAdmin;
 
 const ticketSelect =
   "id, protocolo, titulo, descricao, status, prioridade, tipo, setor, solicitante_id, agente_id, resolved_at, closed_at, service_started_at, service_finished_at, asset_id";
@@ -186,7 +187,7 @@ const getTicketRequester = async (ticket: TicketRecord) => {
 };
 
 const getPendingFeedbackTickets = async (requesterId: string) => {
-  const { data: tickets, error: ticketsError } = await admin
+  const { data: tickets, error: ticketsError } = await serviceRoleAdmin
     .from("tickets")
     .select("id, protocolo, titulo")
     .eq("solicitante_id", requesterId)
@@ -200,8 +201,8 @@ const getPendingFeedbackTickets = async (requesterId: string) => {
   if (!ticketIds.length) return [];
 
   const [feedbacksResult, outcomeInteractionsResult] = await Promise.all([
-    admin.from("feedbacks").select("ticket_id").in("ticket_id", ticketIds),
-    admin
+    serviceRoleAdmin.from("feedbacks").select("ticket_id").in("ticket_id", ticketIds),
+    serviceRoleAdmin
       .from("interactions")
       .select("ticket_id, mensagem")
       .in("ticket_id", ticketIds)

@@ -432,8 +432,11 @@ export default function Dashboard() {
       }
       const { data: feedbacks } = await feedbacksQuery;
 
-      const satisfacaoMedia = feedbacks && feedbacks.length > 0
-        ? feedbacks.reduce((acc, f) => acc + (f.nota_satisfacao || 0), 0) / feedbacks.length
+      const feedbackRatings = (feedbacks || [])
+        .map((feedback) => feedback.nota_satisfacao)
+        .filter((rating): rating is number => rating !== null);
+      const satisfacaoMedia = feedbackRatings.length > 0
+        ? feedbackRatings.reduce((acc, rating) => acc + rating, 0) / feedbackRatings.length
         : 0;
 
       const fetchAverageResolution = async (ticketType: 'TI' | 'Manutenção predial') => {
