@@ -37,6 +37,7 @@ import { TicketTypeSelect } from '@/components/tickets/TicketTypeSelect';
 import { CategorySelect } from '@/components/tickets/CategorySelect';
 import { Checkbox } from '@/components/ui/checkbox';
 import { createTicket } from '@/lib/ticketActions';
+import { isEvaluatedFeedbackOutcome } from '@/lib/ticketFeedback';
 
 const ticketSchema = z.object({
   titulo: z.string().min(5, 'Título deve ter no mínimo 5 caracteres').max(100, 'Título deve ter no máximo 100 caracteres'),
@@ -149,21 +150,20 @@ export default function NovoTicket() {
           .in('ticket_id', ticketIds),
         supabase
           .from('interactions')
-          .select('ticket_id')
+          .select('ticket_id, mensagem')
           .in('ticket_id', ticketIds)
-          .eq('tipo', 'mudanca_status')
-          .in('mensagem', [
-            'Solicitante informou que a solicitação pertence a outro setor. Chamado mantido fechado.',
-            'Solicitante informou que o chamado não foi resolvido, mas optou por não reabri-lo. Chamado mantido fechado.',
-          ]),
+          .eq('tipo', 'mudanca_status'),
       ]);
 
       if (feedbacksResult.error) throw feedbacksResult.error;
       if (outcomeInteractionsResult.error) throw outcomeInteractionsResult.error;
 
+      const outcomeTicketIds = (outcomeInteractionsResult.data || [])
+        .filter(({ mensagem }) => isEvaluatedFeedbackOutcome(mensagem))
+        .map((interaction) => interaction.ticket_id);
       const evaluatedTicketIds = new Set([
         ...(feedbacksResult.data || []).map((feedback) => feedback.ticket_id),
-        ...(outcomeInteractionsResult.data || []).map((interaction) => interaction.ticket_id),
+        ...outcomeTicketIds,
       ]);
       setPendingFeedbackTickets(
         (resolvedTickets || []).filter((ticket) => !evaluatedTicketIds.has(ticket.id)) as PendingFeedbackTicket[],

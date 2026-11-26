@@ -203,13 +203,9 @@ const getPendingFeedbackTickets = async (requesterId: string) => {
     admin.from("feedbacks").select("ticket_id").in("ticket_id", ticketIds),
     admin
       .from("interactions")
-      .select("ticket_id")
+      .select("ticket_id, mensagem")
       .in("ticket_id", ticketIds)
-      .eq("tipo", "mudanca_status")
-      .in("mensagem", [
-        "Solicitante informou que a solicitação pertence a outro setor. Chamado mantido fechado.",
-        "Solicitante informou que o chamado não foi resolvido, mas optou por não reabri-lo. Chamado mantido fechado.",
-      ]),
+      .eq("tipo", "mudanca_status"),
   ]);
 
   if (feedbacksResult.error || outcomeInteractionsResult.error) {
@@ -219,9 +215,23 @@ const getPendingFeedbackTickets = async (requesterId: string) => {
     );
   }
 
+  const outcomeTicketIds = (outcomeInteractionsResult.data || [])
+    .filter(({ mensagem }) => {
+      const normalizedMessage = (mensagem || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+
+      return normalizedMessage.includes("pertence a outro setor") ||
+        normalizedMessage.includes("nao, e de outro setor") ||
+        normalizedMessage.includes("nao e de outro setor") ||
+        normalizedMessage.includes("optou por nao reabri-lo") ||
+        normalizedMessage.includes("nao quero reabrir");
+    })
+    .map((interaction) => interaction.ticket_id);
   const evaluatedTicketIds = new Set([
     ...(feedbacksResult.data || []).map((feedback) => feedback.ticket_id),
-    ...(outcomeInteractionsResult.data || []).map((interaction) => interaction.ticket_id),
+    ...outcomeTicketIds,
   ]);
   return (tickets || []).filter((ticket) => !evaluatedTicketIds.has(ticket.id));
 };
